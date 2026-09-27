@@ -14,11 +14,22 @@ export const treeLayoutDefaults = {
 // Lays out a tree from `getTree` or `getDescendantTree` with the root person
 // at the origin. Generations are placed in columns to the right for
 // `direction` 1 and to the left for -1.
-function layoutTree(data, direction, {boxWidth, boxHeight, gapX, gapY}) {
+function layoutTree(
+  data,
+  direction,
+  {boxWidth, boxHeight, gapX, gapY, orientation}
+) {
   const root = hierarchy(data)
+  const vertical = orientation === 'vertical'
+
   tree()
-    .nodeSize([boxHeight + gapY, boxWidth + gapX])
-    .separation(() => 1)(root)
+    .nodeSize(
+      vertical
+        ? [boxWidth + gapY, boxHeight + gapX]
+        : [boxHeight + gapY, boxWidth + gapX]
+    )
+    .separation((a, b) => (vertical && a.parent !== b.parent ? 1.25 : 1))(root)
+
   const nodes = new Map(
     root.descendants().map(d => [
       d,
@@ -28,11 +39,12 @@ function layoutTree(data, direction, {boxWidth, boxHeight, gapX, gapY}) {
         person: d.data.person,
         // `|| 0` avoids -0 for the root person
         generation: direction * d.depth || 0,
-        x: direction * d.y || 0,
-        y: d.x,
+        x: vertical ? d.x : direction * d.y || 0,
+        y: vertical ? -direction * d.y || 0 : d.x,
       },
     ])
   )
+
   return {
     nodes: [...nodes.values()],
     links: root.links().map(({source, target}) => ({

@@ -18,9 +18,10 @@ describe('chart definitions', () => {
       hourglassChartDesc: 4,
     })
     expect(values).toEqual({
-      ancestors: 2,
+      ancestors: 4,
       descendants: 4,
-      nameDisplayFormat: chartNameDisplayFormat.surnameThenGiven,
+      nameDisplayFormat: chartNameDisplayFormat.givenThenSurname,
+      orientation: 'vertical',
     })
   })
 
@@ -44,7 +45,7 @@ describe('chart definitions', () => {
       ['I1', 4],
     ])
     expect(generations(hourglass, {})).toEqual([
-      ['I1', 3],
+      ['I1', 5],
       ['I1', 2],
     ])
     expect(generations(fan, {})).toEqual([

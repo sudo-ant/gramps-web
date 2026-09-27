@@ -28,6 +28,7 @@ const layoutProperties = [
   'nAnc',
   'nDesc',
   'gapX',
+  'layoutOrientation',
 ]
 
 class GrampsjsTreeChart extends GrampsjsChartBase {
@@ -51,6 +52,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       ancestors: {type: Boolean},
       descendants: {type: Boolean},
       gapX: {type: Number},
+      layoutOrientation: {type: String},
       nameDisplayFormat: {type: String},
       canEdit: {type: Boolean},
     }
@@ -112,17 +114,20 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
         ancestorDepth: this.nAnc,
         descendantDepth: this.nDesc,
         gapX: this.gapX,
+        orientation: this.layoutOrientation,
       })
     }
     if (this.descendants) {
       return layoutDescendants(this._graph, handle, {
         depth: this.nDesc,
         gapX: this.gapX,
+        orientation: this.layoutOrientation,
       })
     }
     return layoutAncestors(this._graph, handle, {
       depth: this.nAnc,
       gapX: this.gapX,
+      orientation: this.layoutOrientation,
     })
   }
 

@@ -16,7 +16,7 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 // A chart definition describes one chart of the tree view:
 // - `settings`: the settings in the settings dialog. Each is stored in the
 //   user settings under `key` and has a `name` in the setting values, a
-//   `label`, a `type` ('number' or 'nameDisplayFormat') and a `default`.
+//   `label`, a `type` ('number', 'nameDisplayFormat', or 'select') and a `default`.
 // - `editable`: whether people can be added to the chart in edit mode.
 // - `zoomable`: whether the chart has zoom and pan controls and keys.
 // - `request(grampsId, values)`: the filter rules and extensions of the
@@ -53,7 +53,7 @@ const nameDisplayFormatSetting = key => ({
   key,
   label: 'Name Display Format',
   type: 'nameDisplayFormat',
-  default: chartNameDisplayFormat.surnameThenGiven,
+  default: chartNameDisplayFormat.givenThenSurname,
 })
 
 const ancestorsSetting = (key, defaultValue) => ({
@@ -84,6 +84,18 @@ const fanColors = {
   religion: 'Religion',
   nPaths: 'Ancestor frequency',
 }
+
+const orientationSetting = key => ({
+  name: 'orientation',
+  key,
+  label: 'Orientation',
+  type: 'select',
+  options: [
+    {value: 'horizontal', label: 'Horizontal'},
+    {value: 'vertical', label: 'Vertical'},
+  ],
+  default: 'vertical',
+})
 
 // The colour control of the fan chart: a palette button that opens the menu of
 // colours or, once a colour is chosen, a chip with that colour that opens the
@@ -154,8 +166,9 @@ function renderFanColorControls(view) {
 export const chartDefinitions = {
   ancestor: {
     settings: [
-      ancestorsSetting('treeChartAnc', 3),
+      ancestorsSetting('treeChartAnc', 4),
       nameDisplayFormatSetting('treeChartNameDisplayFormat'),
+      orientationSetting('ancestorTreeOrientation'),
     ],
     editable: true,
     zoomable: true,
@@ -170,6 +183,7 @@ export const chartDefinitions = {
         nAnc=${values.ancestors + 1}
         nDesc="2"
         nameDisplayFormat=${values.nameDisplayFormat}
+        layoutOrientation=${values.orientation}
         ?canEdit="${canEdit}"
         .data=${data}
         .appState="${appState}"
@@ -182,6 +196,7 @@ export const chartDefinitions = {
     settings: [
       descendantsSetting('descendantChartDesc', 1),
       nameDisplayFormatSetting('descendantChartNameDisplayFormat'),
+      orientationSetting('descendantTreeOrientation'),
     ],
     editable: true,
     zoomable: true,
@@ -196,6 +211,7 @@ export const chartDefinitions = {
         nAnc="2"
         nDesc=${values.descendants + 1}
         nameDisplayFormat=${values.nameDisplayFormat}
+        layoutOrientation=${values.orientation}
         ?canEdit="${canEdit}"
         .data=${data}
         gapX="60"
@@ -207,9 +223,10 @@ export const chartDefinitions = {
 
   hourglass: {
     settings: [
-      ancestorsSetting('hourglassChartAnc', 2),
+      ancestorsSetting('hourglassChartAnc', 4),
       descendantsSetting('hourglassChartDesc', 1),
       nameDisplayFormatSetting('hourglassChartNameDisplayFormat'),
+      orientationSetting('hourglassChartOrientation'),
     ],
     editable: true,
     zoomable: true,
@@ -225,6 +242,7 @@ export const chartDefinitions = {
         nAnc=${values.ancestors + 1}
         nDesc=${values.descendants + 1}
         nameDisplayFormat=${values.nameDisplayFormat}
+        layoutOrientation=${values.orientation}
         ?canEdit="${canEdit}"
         .data=${data}
         gapX="60"

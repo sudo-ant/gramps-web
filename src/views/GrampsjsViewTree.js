@@ -699,6 +699,25 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
         </md-filled-select>
       `
     }
+
+    if (setting.type === 'select') {
+      return html`
+        <md-filled-select
+          @change=${e => this._changeSetting(setting, e.target.value)}
+        >
+          ${map(
+            setting.options,
+            option => html`<md-select-option
+              value="${option.value}"
+              ?selected="${option.value === value}"
+            >
+              <div slot="headline">${this._(option.label)}</div>
+            </md-select-option>`
+          )}
+        </md-filled-select>
+      `
+    }
+
     return html`
       <mwc-textfield
         value=${value}

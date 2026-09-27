@@ -97,6 +97,55 @@ describe('layoutAncestors', () => {
   })
 })
 
+describe('vertical layout', () => {
+  it('places ancestor generations above the root and spreads branches horizontally', () => {
+    const layout = layoutAncestors(graph, 'R', {
+      depth: 3,
+      orientation: 'vertical',
+    })
+
+    expect(positions(layout)).toEqual([
+      {key: 'p', handle: 'R', generation: 0, x: 0, y: 0},
+      {key: 'pf', handle: 'F', generation: 1, x: -170.625, y: -120},
+      {key: 'pm', handle: 'M', generation: 1, x: 170.625, y: -120},
+      {key: 'pff', handle: 'FF', generation: 2, x: -268.125, y: -240},
+      {key: 'pfm', handle: 'FM', generation: 2, x: -73.125, y: -240},
+      {key: 'pmm', handle: 'MM', generation: 2, x: 170.625, y: -240},
+    ])
+  })
+
+  it('places descendant generations below the root and spreads branches horizontally', () => {
+    const layout = layoutDescendants(graph, 'R', {
+      depth: 3,
+      orientation: 'vertical',
+    })
+
+    expect(positions(layout)).toEqual([
+      {key: 'p', handle: 'R', generation: 0, x: 0, y: 0},
+      {key: 'pc0', handle: 'K1', generation: -1, x: -97.5, y: 120},
+      {key: 'pc1', handle: 'K2', generation: -1, x: 97.5, y: 120},
+      {key: 'pc0c0', handle: undefined, generation: -2, x: -97.5, y: 240},
+    ])
+  })
+
+  it('places ancestors above and descendants below the root in an hourglass', () => {
+    const layout = layoutHourglass(graph, 'R', {
+      ancestorDepth: 3,
+      descendantDepth: 3,
+      orientation: 'vertical',
+    })
+
+    const root = layout.nodes.find(node => node.handle === 'R')
+    const ancestors = layout.nodes.filter(node => node.generation > 0)
+    const descendants = layout.nodes.filter(node => node.generation < 0)
+
+    expect(root.x).toBe(0)
+    expect(root.y).toBe(0)
+    expect(ancestors.every(node => node.y < 0)).toBe(true)
+    expect(descendants.every(node => node.y > 0)).toBe(true)
+  })
+})
+
 describe('layoutDescendants', () => {
   const layout = layoutDescendants(graph, 'R', {depth: 3, gapX: 60})
 
