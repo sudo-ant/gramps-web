@@ -108,6 +108,7 @@ export class ChartCanvas {
       positions,
       fit,
       newLayout,
+      insets: settings.viewportInsets,
     })
     if (keptKey) {
       this.keepInPlace(keptKey)
@@ -131,6 +132,7 @@ export class ChartCanvas {
       palette,
       boxWidth,
       boxHeight,
+      showImagePlaceholder: settings.showImagePlaceholder,
     })
     updatePersonCardInteraction(people, {
       interactive,

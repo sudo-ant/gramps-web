@@ -121,6 +121,7 @@ describe('chart definitions', () => {
     expect(chart.grampsId).toBe('I1')
     expect(chart.nAnc).toBe(5)
     expect(chart.nDesc).toBe(2)
+    expect(chart.viewportTopInset).toBe(128)
     expect(chart.nameDisplayFormat).toBe(
       chartNameDisplayFormat.givenThenSurname
     )
@@ -225,6 +226,42 @@ describe('chart definitions', () => {
     ).toBe('')
   })
 
+  it("requests unresolved partners from an ancestor's side families", () => {
+    const primary = family('FGV', 'G', 'H', ['V'])
+    const firstSide = family('FG1', 'G', 'P1')
+    const secondSide = family('FG2', 'G', 'P2')
+    const data = [
+      person('V', {grampsId: 'I1', parentFamily: primary}),
+      person('G', {families: [primary, firstSide, secondSide]}),
+      person('H', {families: [primary]}),
+    ]
+
+    const url = familyTreeCompletionUrl(
+      data,
+      'I1',
+      {ancestors: 1, descendants: 0},
+      'en'
+    )
+
+    expect(new Set(handlesOf(url))).toEqual(new Set(['P1', 'P2']))
+  })
+
+  it("does not request an ancestor side partner's ancestry after completion", () => {
+    const primary = family('FGV', 'G', 'H', ['V'])
+    const side = family('FG1', 'G', 'P1')
+    const partnerParents = family('FPP', 'PF', 'PM', ['P1'])
+    const data = [
+      person('V', {grampsId: 'I1', parentFamily: primary}),
+      person('G', {families: [primary, side]}),
+      person('H', {families: [primary]}),
+      person('P1', {parentFamily: partnerParents, families: [side]}),
+    ]
+
+    expect(
+      familyTreeCompletionUrl(data, 'I1', {ancestors: 2, descendants: 0}, 'en')
+    ).toBe('')
+  })
+
   it('merges returned people by handle without replacing initial records', () => {
     const initialRoot = person('R', {grampsId: 'I1'})
     const duplicateRoot = {...initialRoot, extra: 'completion'}
@@ -317,6 +354,40 @@ describe('GrampsjsViewTree', () => {
     view.willUpdate(new Map())
     expect(view.grampsId).toBe('I1')
     expect(view._history).toEqual(['I1'])
+  })
+
+  it('requests Family Tree data for a newly selected focal person', async () => {
+    const {view, apiGet} = makeView()
+    useFamilyTree(view)
+    apiGet.mockReturnValue(new Promise(() => {}))
+
+    await view._selectPerson({detail: {grampsId: 'I2'}})
+    view._fetchIfNeeded()
+
+    expect(view.grampsId).toBe('I2')
+    expect(rulesOf(apiGet.mock.calls[0][0]).rules).toEqual([
+      {name: 'IsLessThanNthGenerationAncestorOf', values: ['I2', 5]},
+      {name: 'IsLessThanNthGenerationDescendantOf', values: ['I2', 2]},
+    ])
+  })
+
+  it('marks only the Family Tree chart area for right-side overlays', () => {
+    const {view} = makeView()
+    view.appState.i18n.strings = {}
+    view.appState.permissions = {canEdit: false}
+    view.renderTabs = () => ''
+    view.renderControls = () => ''
+    view.renderChart = () => ''
+    view.renderSelectedPerson = () => ''
+    const container = document.createElement('div')
+
+    useFamilyTree(view)
+    render(view.renderContent(), container)
+    expect(container.querySelector('.family-tree-chart-area')).not.toBeNull()
+
+    view._currentTabId = TREE_VIEWS.indexOf('ancestor')
+    render(view.renderContent(), container)
+    expect(container.querySelector('.family-tree-chart-area')).toBeNull()
   })
 
   it('does not pass people fetched for one chart to another', () => {

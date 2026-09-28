@@ -171,6 +171,12 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           cursor: pointer;
         }
 
+        .family-tree-chart-area #controls,
+        .family-tree-chart-area #selected-person {
+          right: 0;
+          left: auto;
+        }
+
         #selected-person:hover {
           background-color: var(--md-sys-color-surface-container);
         }
@@ -448,7 +454,10 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     const {editable} = this.definition
     return html`
       <div id="tabs">${this.renderTabs()}</div>
-      <div style="position: relative;">
+      <div
+        class=${this.chart === 'family' ? 'family-tree-chart-area' : ''}
+        style="position: relative;"
+      >
         <div id="controls">${this.renderControls()}</div>
         <div id="chart">${this.renderChart()}</div>
         ${this.renderSelectedPerson()}

@@ -158,6 +158,57 @@ describe('ChartViewport', () => {
     }
   })
 
+  it('preserves the existing fit transform with zero insets', () => {
+    const defaultView = viewport()
+    const insetView = viewport()
+    defaultView.viewport.show({
+      bounds: large,
+      size,
+      rootHandle: 'A',
+      fit: true,
+    })
+    insetView.viewport.show({
+      bounds: large,
+      size,
+      rootHandle: 'A',
+      fit: true,
+      insets: {top: 0, right: 0, bottom: 0, left: 0},
+    })
+
+    expect(zoomTransform(insetView.svg.node())).toMatchObject(
+      zoomTransform(defaultView.svg.node())
+    )
+  })
+
+  it('fits complete bounds below a top viewport inset', () => {
+    const top = 128
+    const {svg, viewport: view} = viewport()
+    view.show({
+      bounds: large,
+      size,
+      rootHandle: 'A',
+      fit: true,
+      insets: {top},
+    })
+
+    for (const corner of [
+      [large.xMin, large.yMin],
+      [large.xMax, large.yMax],
+    ]) {
+      const [x, y] = viewPosition(svg, corner)
+      expect(x).toBeGreaterThanOrEqual(0)
+      expect(x).toBeLessThanOrEqual(size[0])
+      expect(y).toBeGreaterThanOrEqual(top)
+      expect(y).toBeLessThanOrEqual(size[1])
+    }
+
+    const fitted = zoomTransform(svg.node())
+    view.zoomBy(2)
+    view.panBy(100, 100)
+    view.fit()
+    expect(zoomTransform(svg.node())).toMatchObject(fitted)
+  })
+
   it('does not count a layout shown before the view has a size', () => {
     const {svg, viewport: view} = viewport()
     view.show({bounds: small, size: [-1, -1], rootHandle: 'A', fit: true})

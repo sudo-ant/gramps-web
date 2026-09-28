@@ -83,10 +83,33 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
 }
 
 export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
-  const buildPerson = (personHandle, depth, path) => {
+  const buildPerson = (
+    personHandle,
+    depth,
+    path,
+    descendantFamilyHandle = ''
+  ) => {
     const person = graph.person(personHandle)
     const parentFamilies = person ? graph.parentFamilies(personHandle) : []
     const primaryFamily = parentFamilies[0]
+    const sideFamilies =
+      person && depth > 0
+        ? graph
+            .partnerFamilies(personHandle)
+            .filter(family => family.handle !== descendantFamilyHandle)
+            .map((family, familyIndex) => {
+              const partnerHandle = otherPartnerHandle(family, personHandle)
+              return {
+                key: `${path}side${familyIndex}`,
+                family,
+                partnerHandle,
+                partner: partnerHandle
+                  ? graph.person(partnerHandle)
+                  : undefined,
+                children: [],
+              }
+            })
+        : []
 
     const node = {
       key: path,
@@ -94,6 +117,7 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
       person,
       depth,
       parentFamily: undefined,
+      sideFamilies,
       hasAdditionalParentFamilies: parentFamilies.length > 1,
       hasHiddenPrimaryParents: false,
     }
@@ -110,10 +134,20 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
     node.parentFamily = {
       family: primaryFamily,
       father: primaryFamily.father_handle
-        ? buildPerson(primaryFamily.father_handle, depth + 1, `${path}father`)
+        ? buildPerson(
+            primaryFamily.father_handle,
+            depth + 1,
+            `${path}father`,
+            primaryFamily.handle
+          )
         : undefined,
       mother: primaryFamily.mother_handle
-        ? buildPerson(primaryFamily.mother_handle, depth + 1, `${path}mother`)
+        ? buildPerson(
+            primaryFamily.mother_handle,
+            depth + 1,
+            `${path}mother`,
+            primaryFamily.handle
+          )
         : undefined,
     }
 

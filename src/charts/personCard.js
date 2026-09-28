@@ -1,4 +1,5 @@
 import {local, select} from 'd3-selection'
+import {mdiAccount} from '@mdi/js'
 import {chartNameDisplayFormat, fireEvent} from '../util.js'
 import {
   appendAddPersonButton,
@@ -42,6 +43,7 @@ export function appendPersonCard(
     boxWidth = 190,
     boxHeight = 90,
     imgPadding = 10,
+    showImagePlaceholder = false,
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     palette = chartPalette,
   }
@@ -50,7 +52,9 @@ export function appendPersonCard(
   const top = -boxHeight / 2
   const imgRadius = (boxHeight - imgPadding * 2) / 2
   const textPadding = d =>
-    imageUrl(d) ? 2 * imgRadius + 2 * imgPadding : 2 * imgPadding
+    imageUrl(d) || showImagePlaceholder
+      ? 2 * imgRadius + 2 * imgPadding
+      : 2 * imgPadding
 
   nodes
     .append('rect')
@@ -126,6 +130,39 @@ export function appendPersonCard(
         .attr('cy', top + imgPadding + imgRadius)
         .attr('fill', `url(#${patternId})`)
     })
+
+  if (showImagePlaceholder) {
+    const iconX = left + imgPadding + imgRadius
+    const iconY = top + imgPadding + imgRadius
+    const iconScale = 1.5
+    const iconSize = 24 * iconScale
+    const placeholders = nodes
+      .filter(d => !imageUrl(d))
+      .append('g')
+      .attr('class', 'person-card-avatar')
+
+    placeholders
+      .append('circle')
+      .attr('cx', iconX)
+      .attr('cy', iconY)
+      .attr('r', imgRadius)
+      .attr(
+        'fill',
+        'var(--grampsjs-color-ytree-default-person-icon-background)'
+      )
+
+    placeholders
+      .append('path')
+      .attr('class', 'person-card-avatar-icon')
+      .attr('d', mdiAccount)
+      .attr('fill', 'var(--grampsjs-body-font-color-50)')
+      .attr(
+        'transform',
+        `translate(${iconX - iconSize / 2},${
+          iconY - iconSize / 2
+        }) scale(${iconScale})`
+      )
+  }
 }
 
 // Sets click and hover handling on each node of the selection, and adds the
@@ -198,6 +235,7 @@ export function drawChangedCards(
     palette = chartPalette,
     boxWidth,
     boxHeight,
+    showImagePlaceholder = false,
   }
 ) {
   const changed = new Set()
@@ -207,6 +245,7 @@ export function drawChangedCards(
       imageUrl: getImageUrl(d),
       nameDisplayFormat,
       palette,
+      showImagePlaceholder,
     }
     const previous = cardInputs.get(this)
     cardInputs.set(this, inputs)
@@ -228,6 +267,7 @@ export function drawChangedCards(
     imageUrl: getImageUrl,
     boxWidth,
     boxHeight,
+    showImagePlaceholder,
     nameDisplayFormat,
     palette,
   })

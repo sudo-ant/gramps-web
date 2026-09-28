@@ -149,6 +149,26 @@ describe('appendPersonCard', () => {
     expect(renderCards().full.querySelector('circle')).toBeNull()
   })
 
+  it('can reserve the portrait area and show an avatar without media', () => {
+    const cards = renderCards({showImagePlaceholder: true})
+    const textX = node => node.querySelector('text').getAttribute('x')
+
+    expect(cards.full.querySelector('.person-card-avatar')).not.toBeNull()
+    expect(cards.full.querySelector('.person-card-avatar-icon')).not.toBeNull()
+    expect(cards.noGiven.querySelector('.person-card-avatar')).toBeNull()
+    expect(cards.noGiven.querySelector('pattern image')).not.toBeNull()
+    expect(textX(cards.full)).toBe(textX(cards.noGiven))
+  })
+
+  it('does not show or reserve the avatar unless requested', () => {
+    const cards = renderCards()
+
+    expect(cards.full.querySelector('.person-card-avatar')).toBeNull()
+    expect(cards.full.querySelector('text').getAttribute('x')).not.toBe(
+      cards.noGiven.querySelector('text').getAttribute('x')
+    )
+  })
+
   it('selects the person on click', () => {
     const cards = renderCards()
     click(cards.full)

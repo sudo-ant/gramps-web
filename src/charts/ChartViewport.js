@@ -16,6 +16,13 @@ export function viewBoxStart(focus, extentMin, extentMax, viewSize) {
 // Space around a chart that is fitted into the view, in pixels
 const fitMargin = 20
 
+const normalizeInsets = (insets = {}) => ({
+  top: insets.top ?? 0,
+  right: insets.right ?? 0,
+  bottom: insets.bottom ?? 0,
+  left: insets.left ?? 0,
+})
+
 // The zoom transform and viewBox of a chart whose layouts place the root
 // person at the origin. The viewBox is as large as the container, so one
 // viewBox unit is one screen pixel.
@@ -31,6 +38,7 @@ export class ChartViewport {
     this._size = undefined
     this._bounds = undefined
     this._clicked = undefined
+    this._insets = normalizeInsets()
   }
 
   // Remembers which node of a person was clicked, so that a person who
@@ -64,10 +72,12 @@ export class ChartViewport {
     positions,
     fit = false,
     newLayout = false,
+    insets,
   }) {
     // A new layout stops an animated zoom or pan
     this._svg.interrupt('viewport')
     this._bounds = bounds
+    this._insets = normalizeInsets(insets)
     const previous = {
       transform: zoomTransform(this._svg.node()),
       viewStart: this._viewStart,
@@ -138,7 +148,10 @@ export class ChartViewport {
     if (!this._hasSize() || !this._bounds) {
       return
     }
-    this._animateTo(this._fitTransform(this._bounds, this._size), duration)
+    this._animateTo(
+      this._fitTransform(this._bounds, this._size, this._insets),
+      duration
+    )
   }
 
   // Centres the root person in the view, keeping the zoom level
@@ -233,25 +246,31 @@ export class ChartViewport {
     }
     return {
       transform: fit
-        ? this._fitTransform(bounds, size)
+        ? this._fitTransform(bounds, size, this._insets)
         : zoomIdentity.scale(transform.k),
     }
   }
 
   // Returns the zoom transform that centres the chart in the view, zoomed out
   // as far as needed to show all of it
-  _fitTransform(bounds, size) {
+  _fitTransform(bounds, size, insets = normalizeInsets()) {
+    const width = Math.max(1, size[0] - insets.left - insets.right)
+    const height = Math.max(1, size[1] - insets.top - insets.bottom)
     const k = Math.min(
       1,
-      size[0] / (bounds.xMax - bounds.xMin + 2 * fitMargin),
-      size[1] / (bounds.yMax - bounds.yMin + 2 * fitMargin)
+      width / (bounds.xMax - bounds.xMin + 2 * fitMargin),
+      height / (bounds.yMax - bounds.yMin + 2 * fitMargin)
     )
     return zoomIdentity
       .translate(
         this._viewStart[0] +
-          size[0] / 2 -
+          insets.left +
+          width / 2 -
           (k * (bounds.xMin + bounds.xMax)) / 2,
-        this._viewStart[1] + size[1] / 2 - (k * (bounds.yMin + bounds.yMax)) / 2
+        this._viewStart[1] +
+          insets.top +
+          height / 2 -
+          (k * (bounds.yMin + bounds.yMax)) / 2
       )
       .scale(k)
   }

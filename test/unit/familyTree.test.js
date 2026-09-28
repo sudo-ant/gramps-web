@@ -261,4 +261,40 @@ describe('getPrimaryAncestry', () => {
     expect(result.parentFamily.father.handle).toBe('F')
     expect(result.parentFamily.mother).toBeUndefined()
   })
+
+  it("keeps an ancestor's additional partnerships without expanding them", () => {
+    const primary = family('FGV', 'G', 'H', ['V'])
+    const firstSide = family('FG1', 'G', 'P1', ['S1'])
+    const secondSide = family('FG2', 'G', 'P2', ['S2'])
+    const partnerParents = family('FPP', 'PF', 'PM', ['P1'])
+    const graph = new FamilyGraph([
+      person('V', {parentFamily: primary}),
+      person('G', {families: [primary, firstSide, secondSide]}),
+      person('H', {families: [primary]}),
+      person('P1', {parentFamily: partnerParents, families: [firstSide]}),
+      person('P2', {families: [secondSide]}),
+      person('S1', {parentFamily: firstSide}),
+      person('S2', {parentFamily: secondSide}),
+      person('PF'),
+      person('PM'),
+    ])
+
+    const result = getPrimaryAncestry(graph, 'V', 2)
+    const gunter = result.parentFamily.father
+
+    expect(gunter.handle).toBe('G')
+    expect(gunter.sideFamilies.map(item => item.family.handle)).toEqual([
+      'FG1',
+      'FG2',
+    ])
+    expect(gunter.sideFamilies.map(item => item.partnerHandle)).toEqual([
+      'P1',
+      'P2',
+    ])
+    expect(gunter.sideFamilies.every(item => item.children.length === 0)).toBe(
+      true
+    )
+    expect(gunter.sideFamilies[0].partner).toBe(graph.person('P1'))
+    expect(gunter.sideFamilies[0]).not.toHaveProperty('parentFamily')
+  })
 })

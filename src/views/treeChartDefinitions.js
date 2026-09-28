@@ -220,6 +220,7 @@ export const chartDefinitions = {
         grampsId=${grampsId}
         nAnc=${values.ancestors + 1}
         nDesc=${values.descendants + 1}
+        viewportTopInset="128"
         nameDisplayFormat=${values.nameDisplayFormat}
         ?canEdit="${canEdit}"
         .data=${data}
