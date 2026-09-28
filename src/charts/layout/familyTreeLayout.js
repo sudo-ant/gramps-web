@@ -120,6 +120,10 @@ export function layoutFamilyTree(
       const {family, children, width} = familyMeasurement
       const familyCentre = familyLeft + width / 2
 
+      if (personMeasurement.families.length === 1 && family.partnerHandle) {
+        node.x = familyCentre - boxWidth / 2 - partnerGap / 2
+      }
+
       const partnerX = family.partnerHandle
         ? familyCentre + partnerGap / 2 + boxWidth / 2
         : undefined

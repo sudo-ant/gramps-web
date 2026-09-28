@@ -44,6 +44,16 @@ describe('layoutFamilyTree', () => {
     expect(partner.y).toBe(root.y)
     expect(root.generation).toBe(0)
     expect(partner.generation).toBe(0)
+
+    const left = root.x < partner.x ? root : partner
+    const right = root.x < partner.x ? partner : root
+
+    const leftEdge = left.x + familyTreeLayoutDefaults.boxWidth / 2
+    const rightEdge = right.x - familyTreeLayoutDefaults.boxWidth / 2
+
+    expect(rightEdge - leftEdge).toBeGreaterThanOrEqual(
+      familyTreeLayoutDefaults.partnerGap
+    )
   })
 
   it('places the relationship between the focal person and partner', () => {
@@ -206,6 +216,17 @@ describe('layoutFamilyTree', () => {
     const secondPartner = layout.nodes.find(node => node.handle === 'P2')
 
     expect(firstPartner.x).not.toBe(secondPartner.x)
+
+    const left = firstPartner.x < secondPartner.x ? firstPartner : secondPartner
+    const right =
+      firstPartner.x < secondPartner.x ? secondPartner : firstPartner
+
+    const leftEdge = left.x + familyTreeLayoutDefaults.boxWidth / 2
+    const rightEdge = right.x - familyTreeLayoutDefaults.boxWidth / 2
+
+    expect(rightEdge - leftEdge).toBeGreaterThanOrEqual(
+      familyTreeLayoutDefaults.familyGap
+    )
     expect(firstPartner.y).toBe(0)
     expect(secondPartner.y).toBe(0)
   })
