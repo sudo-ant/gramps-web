@@ -70,7 +70,7 @@ export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
       return
     }
     this._chart.update(this._layout, {
-      getImageUrl: d => getImageUrl(d.person, 100),
+      getImageUrl: d => getImageUrl(d.person ?? {}, 100),
       bboxWidth: this.containerWidth,
       bboxHeight: this.containerHeight,
       nameDisplayFormat: this.nameDisplayFormat,

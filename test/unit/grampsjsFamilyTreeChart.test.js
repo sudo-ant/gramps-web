@@ -4,6 +4,12 @@ import {GrampsjsFamilyTreeChart} from '../../src/components/GrampsjsFamilyTreeCh
 
 const mocks = vi.hoisted(() => ({
   clear: vi.fn(),
+  getImageUrl: vi.fn((person, size) => {
+    if (person === undefined) {
+      throw new TypeError('person is required')
+    }
+    return person.handle ? `${person.handle}:${size}` : ''
+  }),
   layoutFamilyTree: vi.fn(),
   update: vi.fn(),
 }))
@@ -24,7 +30,7 @@ vi.mock('../../src/charts/layout/familyTreeLayout.js', () => ({
 
 vi.mock('../../src/charts/util.js', () => ({
   chartTransitionDuration: () => 321,
-  getImageUrl: (person, size) => `${person.handle}:${size}`,
+  getImageUrl: mocks.getImageUrl,
 }))
 
 const changed = (...names) => new Map(names.map(name => [name, undefined]))
@@ -85,6 +91,8 @@ describe('GrampsjsFamilyTreeChart', () => {
     )
     const options = mocks.update.mock.calls[0][1]
     expect(options.getImageUrl({person: {handle: 'P'}})).toBe('P:100')
+    expect(options.getImageUrl({person: undefined})).toBe('')
+    expect(mocks.getImageUrl).toHaveBeenLastCalledWith({}, 100)
   })
 
   it('retains the current layout while a missing selected person is fetched', () => {

@@ -4,6 +4,8 @@ import {
   chartDataUrl,
   chartDefinitions,
   chartSettingValues,
+  familyTreeCompletionUrl,
+  mergePeopleByHandle,
 } from '../../src/views/treeChartDefinitions.js'
 import {GrampsjsViewTree} from '../../src/views/GrampsjsViewTree.js'
 import {chartNameDisplayFormat} from '../../src/util.js'
@@ -13,6 +15,28 @@ const rulesOf = url =>
   JSON.parse(decodeURIComponent(/rules=([^&]*)/.exec(url)[1]))
 
 const extendOf = url => /extend=([^&]*)/.exec(url)[1]
+
+const family = (handle, father, mother, children = []) => ({
+  handle,
+  father_handle: father,
+  mother_handle: mother,
+  child_ref_list: children.map(ref => ({ref, frel: 'Birth', mrel: 'Birth'})),
+})
+
+const person = (
+  handle,
+  {grampsId = handle, parentFamily, families = []} = {}
+) => ({
+  handle,
+  gramps_id: grampsId,
+  extended: {
+    primary_parent_family: parentFamily,
+    families,
+  },
+})
+
+const handlesOf = url =>
+  url ? decodeURIComponent(/handles=([^&]*)/.exec(url)[1]).split(',') : []
 
 describe('chart definitions', () => {
   it('defines Family Tree with independent product defaults', () => {
@@ -118,6 +142,102 @@ describe('chart definitions', () => {
     )
   })
 
+  it('requests unresolved focal and descendant partners exactly once', () => {
+    const focalFamily1 = family('F1', 'R', 'P1', ['C'])
+    const focalFamily2 = family('F2', 'R', 'P2')
+    const focalFamily3 = family('F3', 'R', 'P3')
+    const repeatedPartnerFamily = family('F4', 'R', 'P2')
+    const childFamily = family('FC', 'C', 'CP')
+    const data = [
+      person('R', {
+        grampsId: 'I1',
+        families: [
+          focalFamily1,
+          focalFamily2,
+          focalFamily3,
+          repeatedPartnerFamily,
+        ],
+      }),
+      person('C', {families: [childFamily]}),
+      person('P1'),
+    ]
+
+    const url = familyTreeCompletionUrl(
+      data,
+      'I1',
+      {ancestors: 0, descendants: 1},
+      'de'
+    )
+
+    expect(new Set(handlesOf(url))).toEqual(new Set(['P2', 'P3', 'CP']))
+    expect(handlesOf(url)).toHaveLength(3)
+    expect(url).toContain('locale=de')
+    expect(url).toContain('profile=self')
+    expect(extendOf(url)).toBe(
+      'event_ref_list,primary_parent_family,family_list'
+    )
+  })
+
+  it('requests an unresolved ancestor at the current model boundary', () => {
+    const parents = family('FP', 'F', 'M', ['R'])
+    const grandparents = family('FG', 'GF', 'GM', ['F'])
+    const data = [
+      person('R', {grampsId: 'I1', parentFamily: parents}),
+      person('F', {parentFamily: grandparents}),
+      person('M'),
+    ]
+
+    const url = familyTreeCompletionUrl(
+      data,
+      'I1',
+      {ancestors: 1, descendants: 0},
+      'en'
+    )
+
+    // The existing filter counts the focal person, while the Family Tree
+    // model currently creates ancestor nodes through ancestors + 1.
+    expect(handlesOf(url)).toEqual(['GF', 'GM'])
+  })
+
+  it('does not request people when every displayed person is loaded', () => {
+    const focalFamily = family('F1', 'R', 'P', ['C'])
+    const data = [
+      person('R', {grampsId: 'I1', families: [focalFamily]}),
+      person('P'),
+      person('C'),
+    ]
+
+    expect(
+      familyTreeCompletionUrl(data, 'I1', {ancestors: 0, descendants: 0}, 'en')
+    ).toBe('')
+  })
+
+  it('does not traverse the ancestry of a fetched partner', () => {
+    const focalFamily = family('F1', 'R', 'P')
+    const partnerParents = family('FPP', 'PF', 'PM', ['P'])
+    const data = [
+      person('R', {grampsId: 'I1', families: [focalFamily]}),
+      person('P', {parentFamily: partnerParents}),
+    ]
+
+    expect(
+      familyTreeCompletionUrl(data, 'I1', {ancestors: 2, descendants: 0}, 'en')
+    ).toBe('')
+  })
+
+  it('merges returned people by handle without replacing initial records', () => {
+    const initialRoot = person('R', {grampsId: 'I1'})
+    const duplicateRoot = {...initialRoot, extra: 'completion'}
+    const partner = person('P')
+
+    expect(
+      mergePeopleByHandle(
+        [initialRoot],
+        [duplicateRoot, partner, partner, {handle: ''}]
+      )
+    ).toEqual([initialRoot, partner])
+  })
+
   it('fetches people by degree of separation with all parent families for the relationship chart', () => {
     const {relationship} = chartDefinitions
     const url = chartDataUrl(
@@ -167,6 +287,10 @@ function makeView(settings = {}) {
 }
 
 describe('GrampsjsViewTree', () => {
+  function useFamilyTree(view) {
+    view._currentTabId = TREE_VIEWS.indexOf('family')
+  }
+
   it('fetches again only when the request changes', () => {
     const settings = {}
     const {view, apiGet} = makeView(settings)
@@ -341,4 +465,90 @@ describe('GrampsjsViewTree', () => {
     expect(view._data).toEqual([{handle: 'B'}])
     expect(view.loading).toBe(false)
   })
+
+  it('does not make a completion request when Family Tree data is complete', async () => {
+    const {view, apiGet} = makeView()
+    useFamilyTree(view)
+    apiGet.mockResolvedValue({data: [person('R', {grampsId: 'I1'})]})
+
+    view._fetchIfNeeded()
+    await vi.waitFor(() => expect(view.loading).toBe(false))
+
+    expect(apiGet).toHaveBeenCalledOnce()
+    expect(view._data).toEqual([person('R', {grampsId: 'I1'})])
+  })
+
+  it('fetches and merges unresolved Family Tree people', async () => {
+    const {view, apiGet} = makeView()
+    useFamilyTree(view)
+    const focalFamily = family('F1', 'R', 'P')
+    const root = person('R', {grampsId: 'I1', families: [focalFamily]})
+    const partner = person('P')
+    apiGet
+      .mockResolvedValueOnce({data: [root]})
+      .mockResolvedValueOnce({data: [root, partner]})
+
+    view._fetchIfNeeded()
+    await vi.waitFor(() => expect(view.loading).toBe(false))
+
+    expect(apiGet).toHaveBeenCalledTimes(2)
+    expect(handlesOf(apiGet.mock.calls[1][0])).toEqual(['P'])
+    expect(view._data).toEqual([root, partner])
+  })
+
+  it('keeps an omitted completion person as a placeholder without retrying', async () => {
+    const {view, apiGet} = makeView()
+    useFamilyTree(view)
+    const focalFamily = family('F1', 'R', 'P')
+    const root = person('R', {grampsId: 'I1', families: [focalFamily]})
+    apiGet
+      .mockResolvedValueOnce({data: [root]})
+      .mockResolvedValueOnce({data: []})
+
+    view._fetchIfNeeded()
+    await vi.waitFor(() => expect(view.loading).toBe(false))
+
+    expect(apiGet).toHaveBeenCalledTimes(2)
+    expect(view._data).toEqual([root])
+  })
+
+  it.each(['person', 'settings'])(
+    'ignores stale Family Tree completion data after %s changes',
+    async change => {
+      const settings = {}
+      const {view, apiGet} = makeView(settings)
+      useFamilyTree(view)
+      const focalFamily = family('F1', 'R', 'P')
+      const firstRoot = person('R', {
+        grampsId: 'I1',
+        families: [focalFamily],
+      })
+      const completion = deferred()
+      const currentRoot =
+        change === 'person'
+          ? person('R2', {grampsId: 'I2'})
+          : person('R', {grampsId: 'I1'})
+      apiGet
+        .mockResolvedValueOnce({data: [firstRoot]})
+        .mockReturnValueOnce(completion.promise)
+        .mockResolvedValueOnce({data: [currentRoot]})
+
+      view._fetchIfNeeded()
+      await vi.waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2))
+      if (change === 'person') {
+        view.grampsId = 'I2'
+      } else {
+        settings.familyTreeChartAnc = 5
+      }
+      view._fetchIfNeeded()
+      await vi.waitFor(() => expect(view._data).toEqual([currentRoot]))
+      completion.resolve({data: [person('P')]})
+      await completion.promise
+      await Promise.resolve()
+
+      expect(apiGet).toHaveBeenCalledTimes(3)
+      expect(view._data).toEqual([currentRoot])
+      expect(view.loading).toBe(false)
+    }
+  )
 })

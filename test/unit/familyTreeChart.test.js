@@ -70,7 +70,39 @@ describe('FamilyTreeChart', () => {
       layout.nodes.length + layout.relationships.length
     )
     expect(cards).toHaveLength(layout.nodes.length)
+    expect(chart.node.querySelectorAll('.person-card rect')).toHaveLength(
+      layout.nodes.length * 2
+    )
+    expect(chart.node.querySelectorAll('.person-card text')).toHaveLength(
+      layout.nodes.length * 2
+    )
     expect(junctions).toHaveLength(layout.relationships.length)
+  })
+
+  it('draws cards when referenced people were not fetched', () => {
+    const chart = new FamilyTreeChart()
+    const partialGraph = new FamilyGraph([
+      person('R', {families: [focalFamily]}),
+    ])
+    const layout = layoutFamilyTree(partialGraph, 'R', {
+      ancestorDepth: 0,
+      descendantDepth: 1,
+    })
+    const unresolved = layout.nodes.filter(node => !node.person)
+
+    expect(unresolved.length).toBeGreaterThan(0)
+    expect(() =>
+      chart.update(layout, {
+        ...size,
+        getImageUrl: node => (node.person ? 'image-url' : ''),
+      })
+    ).not.toThrow()
+    expect(chart.node.querySelectorAll('.person-card')).toHaveLength(
+      layout.nodes.length
+    )
+    expect(chart.node.querySelectorAll('.person-card rect')).toHaveLength(
+      layout.nodes.length * 2
+    )
   })
 
   it('draws a couple line for each relationship with two people', () => {

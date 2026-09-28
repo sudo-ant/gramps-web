@@ -12,6 +12,8 @@ import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsRelationshipChart.js'
 import '../components/GrampsjsTooltip.js'
 import '../components/GrampsjsTreeChart.js'
+import {FamilyGraph} from '../charts/model/FamilyGraph.js'
+import {layoutFamilyTree} from '../charts/layout/familyTreeLayout.js'
 import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 
 // A chart definition describes one chart of the tree view:
@@ -22,6 +24,8 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 // - `zoomable`: whether the chart has zoom and pan controls and keys.
 // - `request(grampsId, values)`: the filter rules and extensions of the
 //   people the chart needs.
+// - `completionUrl(data, grampsId, values, lang)`, optional: a request for
+//   people referenced by the initial data that the chart also displays.
 // - `render({grampsId, values, data, canEdit, appState, state})`: the chart
 //   component. `state` holds options that are not stored, such as the fan
 //   chart colour.
@@ -32,6 +36,45 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 // generation.
 
 const treeExtend = 'event_ref_list,primary_parent_family,family_list'
+
+export function familyTreeCompletionUrl(data, grampsId, values, lang) {
+  const graph = new FamilyGraph(data)
+  const {handle} = graph.personByGrampsId(grampsId) ?? {}
+  if (!handle) {
+    return ''
+  }
+  const layout = layoutFamilyTree(graph, handle, {
+    ancestorDepth: values.ancestors + 1,
+    descendantDepth: values.descendants + 1,
+  })
+  const handles = [
+    ...new Set(
+      layout.nodes
+        .filter(node => !node.person && node.handle)
+        .map(node => node.handle)
+    ),
+  ]
+  if (handles.length === 0) {
+    return ''
+  }
+  return `/api/people/?handles=${handles
+    .map(missingHandle => encodeURIComponent(missingHandle))
+    .join(',')}&locale=${lang || 'en'}&profile=self&extend=${treeExtend}`
+}
+
+export function mergePeopleByHandle(initial, additional) {
+  const handles = new Set(initial.map(person => person.handle))
+  return [
+    ...initial,
+    ...additional.filter(person => {
+      if (!person.handle || handles.has(person.handle)) {
+        return false
+      }
+      handles.add(person.handle)
+      return true
+    }),
+  ]
+}
 
 function treeRules(grampsId, ancestorGenerations, descendantGenerations) {
   return {
@@ -171,6 +214,7 @@ export const chartDefinitions = {
       rules: treeRules(grampsId, ancestors + 1, descendants + 1),
       extend: treeExtend,
     }),
+    completionUrl: familyTreeCompletionUrl,
     render: ({grampsId, values, data, canEdit, appState}) => html`
       <grampsjs-family-tree-chart
         grampsId=${grampsId}

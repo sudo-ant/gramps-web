@@ -35,6 +35,7 @@ import {
   chartDataUrl,
   chartDefinitions,
   chartSettingValues,
+  mergePeopleByHandle,
 } from './treeChartDefinitions.js'
 import {chartNameDisplayFormat, fireEvent, isKeyEventInInput} from '../util.js'
 import {chartTransitionDuration, formatChartName} from '../charts/util.js'
@@ -390,19 +391,54 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   async _fetchData(url) {
     this._dataRequest += 1
     const request = this._dataRequest
+    const definition = this.definition
+    const grampsId = this.grampsId
+    const values = this.settingValues
+    const lang = this.appState?.i18n?.lang
     this.loading = true
-    const data = await this.appState.apiGet(url)
-    if (request !== this._dataRequest) {
+    const result = await this.appState.apiGet(url)
+    if (!this._isCurrentDataRequest(request, url, definition)) {
       return
     }
-    this.loading = false
-    if ('data' in data) {
+    if ('data' in result) {
+      let data = result.data
+      const completionUrl = definition.completionUrl?.(
+        data,
+        grampsId,
+        values,
+        lang
+      )
+      if (completionUrl) {
+        const completion = await this.appState.apiGet(completionUrl)
+        if (!this._isCurrentDataRequest(request, url, definition)) {
+          return
+        }
+        if ('data' in completion) {
+          data = mergePeopleByHandle(data, completion.data)
+        }
+      }
+      this.loading = false
       this.error = false
-      this._data = data.data
-    } else if ('error' in data) {
+      this._data = data
+    } else if ('error' in result) {
+      this.loading = false
       this.error = true
-      this._errorMessage = data.error
+      this._errorMessage = result.error
     }
+  }
+
+  _isCurrentDataRequest(request, url, definition) {
+    return (
+      request === this._dataRequest &&
+      definition === this.definition &&
+      url ===
+        chartDataUrl(
+          this.definition,
+          this.grampsId,
+          this.settingValues,
+          this.appState?.i18n?.lang
+        )
+    )
   }
 
   renderContent() {
