@@ -1,4 +1,5 @@
 export const TREE_VIEWS = [
+  'family',
   'ancestor',
   'descendant',
   'hourglass',

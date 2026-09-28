@@ -7,6 +7,7 @@ import '@material/web/menu/menu-item'
 import {mdiPalette} from '@mdi/js'
 
 import '../components/GrampsjsFanChart.js'
+import '../components/GrampsjsFamilyTreeChart.js'
 import '../components/GrampsjsIcon.js'
 import '../components/GrampsjsRelationshipChart.js'
 import '../components/GrampsjsTooltip.js'
@@ -48,12 +49,15 @@ function treeRules(grampsId, ancestorGenerations, descendantGenerations) {
   }
 }
 
-const nameDisplayFormatSetting = key => ({
+const nameDisplayFormatSetting = (
+  key,
+  defaultValue = chartNameDisplayFormat.surnameThenGiven
+) => ({
   name: 'nameDisplayFormat',
   key,
   label: 'Name Display Format',
   type: 'nameDisplayFormat',
-  default: chartNameDisplayFormat.surnameThenGiven,
+  default: defaultValue,
 })
 
 const ancestorsSetting = (key, defaultValue) => ({
@@ -152,6 +156,34 @@ function renderFanColorControls(view) {
 }
 
 export const chartDefinitions = {
+  family: {
+    settings: [
+      ancestorsSetting('familyTreeChartAnc', 4),
+      descendantsSetting('familyTreeChartDesc', 1),
+      nameDisplayFormatSetting(
+        'familyTreeChartNameDisplayFormat',
+        chartNameDisplayFormat.givenThenSurname
+      ),
+    ],
+    editable: true,
+    zoomable: true,
+    request: (grampsId, {ancestors, descendants}) => ({
+      rules: treeRules(grampsId, ancestors + 1, descendants + 1),
+      extend: treeExtend,
+    }),
+    render: ({grampsId, values, data, canEdit, appState}) => html`
+      <grampsjs-family-tree-chart
+        grampsId=${grampsId}
+        nAnc=${values.ancestors + 1}
+        nDesc=${values.descendants + 1}
+        nameDisplayFormat=${values.nameDisplayFormat}
+        ?canEdit="${canEdit}"
+        .data=${data}
+        .appState="${appState}"
+      ></grampsjs-family-tree-chart>
+    `,
+  },
+
   ancestor: {
     settings: [
       ancestorsSetting('treeChartAnc', 3),

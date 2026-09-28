@@ -1,3 +1,4 @@
+import {render} from 'lit'
 import {describe, it, expect, vi} from 'vitest'
 import {
   chartDataUrl,
@@ -6,6 +7,7 @@ import {
 } from '../../src/views/treeChartDefinitions.js'
 import {GrampsjsViewTree} from '../../src/views/GrampsjsViewTree.js'
 import {chartNameDisplayFormat} from '../../src/util.js'
+import {TREE_VIEWS} from '../../src/treeDefaults.js'
 
 const rulesOf = url =>
   JSON.parse(decodeURIComponent(/rules=([^&]*)/.exec(url)[1]))
@@ -13,6 +15,22 @@ const rulesOf = url =>
 const extendOf = url => /extend=([^&]*)/.exec(url)[1]
 
 describe('chart definitions', () => {
+  it('defines Family Tree with independent product defaults', () => {
+    expect(chartDefinitions.family).toBeDefined()
+    expect(chartSettingValues(chartDefinitions.family)).toEqual({
+      ancestors: 4,
+      descendants: 1,
+      nameDisplayFormat: chartNameDisplayFormat.givenThenSurname,
+    })
+    expect(
+      chartDefinitions.family.settings.map(setting => setting.key)
+    ).toEqual([
+      'familyTreeChartAnc',
+      'familyTreeChartDesc',
+      'familyTreeChartNameDisplayFormat',
+    ])
+  })
+
   it('reads setting values from the user settings, with defaults', () => {
     const values = chartSettingValues(chartDefinitions.hourglass, {
       hourglassChartDesc: 4,
@@ -25,7 +43,7 @@ describe('chart definitions', () => {
   })
 
   it('fetches one more generation than the settings count', () => {
-    const {ancestor, descendant, hourglass, fan} = chartDefinitions
+    const {family, ancestor, descendant, hourglass, fan} = chartDefinitions
     const generations = (definition, settings) =>
       rulesOf(
         chartDataUrl(
@@ -35,6 +53,10 @@ describe('chart definitions', () => {
           'en'
         )
       ).rules.map(rule => rule.values)
+    expect(generations(family, {})).toEqual([
+      ['I1', 5],
+      ['I1', 2],
+    ])
     expect(generations(ancestor, {treeChartAnc: 5})).toEqual([
       ['I1', 6],
       ['I1', 2],
@@ -51,6 +73,49 @@ describe('chart definitions', () => {
       ['I1', 5],
       ['I1', 2],
     ])
+  })
+
+  it('renders Family Tree with effective depths and runtime properties', () => {
+    const container = document.createElement('div')
+    const data = [{handle: 'P'}]
+    const appState = {settings: {}}
+    const values = chartSettingValues(chartDefinitions.family)
+
+    render(
+      chartDefinitions.family.render({
+        grampsId: 'I1',
+        values,
+        data,
+        canEdit: true,
+        appState,
+      }),
+      container
+    )
+
+    const chart = container.querySelector('grampsjs-family-tree-chart')
+    expect(chart).not.toBeNull()
+    expect(chart.grampsId).toBe('I1')
+    expect(chart.nAnc).toBe(5)
+    expect(chart.nDesc).toBe(2)
+    expect(chart.nameDisplayFormat).toBe(
+      chartNameDisplayFormat.givenThenSurname
+    )
+    expect(chart.canEdit).toBe(true)
+    expect(chart.data).toBe(data)
+    expect(chart.appState).toBe(appState)
+  })
+
+  it('fetches Family Tree people with family-aware extensions', () => {
+    const url = chartDataUrl(
+      chartDefinitions.family,
+      'I1',
+      chartSettingValues(chartDefinitions.family),
+      'en'
+    )
+
+    expect(extendOf(url)).toBe(
+      'event_ref_list,primary_parent_family,family_list'
+    )
   })
 
   it('fetches people by degree of separation with all parent families for the relationship chart', () => {
@@ -75,6 +140,7 @@ describe('chart definitions', () => {
       .filter(([, definition]) => definition.editable)
       .map(([name]) => name)
     expect(editable).toEqual([
+      'family',
       'ancestor',
       'descendant',
       'hourglass',
@@ -135,7 +201,7 @@ describe('GrampsjsViewTree', () => {
     view.willUpdate(new Map())
     view._data = [{handle: 'A'}]
     view._fetchIfNeeded()
-    view._currentTabId = 3
+    view._currentTabId = TREE_VIEWS.indexOf('relationship')
     view.willUpdate(new Map())
     expect(view._data).toEqual([])
     view._fetchIfNeeded()
@@ -238,8 +304,23 @@ describe('GrampsjsViewTree', () => {
 
     it('has no viewport for the fan chart', () => {
       const {view} = makeView()
-      view._currentTabId = 4
+      view._currentTabId = TREE_VIEWS.indexOf('fan')
       expect(view._chartViewport()).toBeUndefined()
+    })
+
+    it('finds the Family Tree viewport', () => {
+      const {view} = makeView()
+      const viewport = {}
+      const querySelector = vi.fn(() => ({viewport}))
+      Object.defineProperty(view, 'renderRoot', {
+        value: {querySelector},
+      })
+      view._currentTabId = TREE_VIEWS.indexOf('family')
+
+      expect(view._chartViewport()).toBe(viewport)
+      expect(querySelector).toHaveBeenCalledWith(
+        '#chart grampsjs-family-tree-chart, #chart grampsjs-tree-chart, #chart grampsjs-relationship-chart'
+      )
     })
   })
 

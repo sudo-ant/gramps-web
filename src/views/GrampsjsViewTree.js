@@ -436,6 +436,11 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   renderTabs() {
     const options = [
       {
+        value: 'family',
+        label: this._('Family Tree'),
+        icon: mdiFamilyTree,
+      },
+      {
         value: 'ancestor',
         label: this._('Ancestor Tree'),
         icon: mdiFamilyTree,
@@ -640,7 +645,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
       return undefined
     }
     return this.renderRoot?.querySelector(
-      '#chart grampsjs-tree-chart, #chart grampsjs-relationship-chart'
+      '#chart grampsjs-family-tree-chart, #chart grampsjs-tree-chart, #chart grampsjs-relationship-chart'
     )?.viewport
   }
 
