@@ -10,6 +10,7 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
       homePersonDetails: {type: Object},
       _timelineData: {type: Array},
       _timelineLoading: {type: Boolean},
+      _familyMedia: {type: Object},
     }
   }
 
@@ -19,6 +20,7 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
     this._className = 'person'
     this._timelineData = []
     this._timelineLoading = false
+    this._familyMedia = {}
     this._boundHandleTimelineNeeded = this._handleTimelineNeeded.bind(this)
   }
 
@@ -42,6 +44,7 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
     super._clearData()
     this._timelineData = []
     this._timelineLoading = false
+    this._familyMedia = {}
   }
 
   _handleTimelineNeeded() {
@@ -61,6 +64,7 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
       this._timelineLoading = false
       if ('data' in result) {
         this._timelineData = result.data
+        this._fetchFamilyMedia()
       } else if ('error' in result) {
         fireEvent(this, 'grampsjs:error', {message: result.error})
       }
@@ -73,6 +77,43 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
     }&profile=all&backlinks=true&extend=all&precision=1`
   }
 
+  async _fetchFamilyMedia() {
+    const familyEventHandles = new Set(
+      (this._data?.extended?.families || [])
+        .flatMap(family => family.event_ref_list || [])
+        .map(eventRef => eventRef.ref)
+    )
+
+    const mediaHandles = [
+      ...new Set(
+        this._timelineData
+          .filter(event => familyEventHandles.has(event.handle))
+          .flatMap(event => event.media || [])
+      ),
+    ]
+
+    if (!mediaHandles.length) {
+      this._familyMedia = {}
+      return
+    }
+
+    const locale = this.appState.i18n.lang || 'en'
+
+    const results = await Promise.all(
+      mediaHandles.map(handle =>
+        this.appState.apiGet(
+          `/api/media/${handle}?locale=${locale}&profile=all&backlinks=true&extend=all`
+        )
+      )
+    )
+
+    this._familyMedia = Object.fromEntries(
+      results
+        .filter(result => 'data' in result)
+        .map(result => [result.data.handle, result.data])
+    )
+  }
+
   renderElement() {
     return html`
       <grampsjs-person
@@ -80,6 +121,7 @@ export class GrampsjsViewPerson extends GrampsjsViewObject {
         .appState="${this.appState}"
         .homePersonDetails=${this.homePersonDetails}
         .timelineData=${this._timelineData}
+        .familyMedia=${this._familyMedia}
         ?edit="${this.edit}"
         ?canEdit="${this.canEdit}"
       ></grampsjs-person>

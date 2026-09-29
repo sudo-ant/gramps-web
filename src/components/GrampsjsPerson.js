@@ -66,6 +66,7 @@ export class GrampsjsPerson extends GrampsjsObject {
     return {
       homePersonDetails: {type: Object},
       timelineData: {type: Array},
+      familyMedia: {type: Object},
       _showFamilyEvents: {type: Boolean},
       _showRelatedEvents: {type: Boolean},
     }
@@ -79,6 +80,7 @@ export class GrampsjsPerson extends GrampsjsObject {
     this._objectIcon = objectIconPath.person
     this._showReferences = false
     this.timelineData = []
+    this.familyMedia = {}
     this._showFamilyEvents = false
     this._showRelatedEvents = false
   }
@@ -401,7 +403,85 @@ export class GrampsjsPerson extends GrampsjsObject {
     }
   }
 
+  _getFamilyMediaEvents() {
+    const familyEventHandles = new Set(
+      (this.data?.extended?.families || [])
+        .flatMap(family => family.event_ref_list || [])
+        .map(eventRef => eventRef.ref)
+    )
+
+    return this.timelineData
+      .filter(
+        event =>
+          familyEventHandles.has(event.handle) &&
+          (event.media || []).some(handle => this.familyMedia[handle])
+      )
+      .map(event => {
+        const media = (event.media || [])
+          .map(handle => this.familyMedia[handle])
+          .filter(Boolean)
+
+        return {
+          event,
+          media,
+          mediaRef: media.map(mediaObject => ({
+            ref: mediaObject.handle,
+          })),
+        }
+      })
+  }
+
+  _renderFamilyMedia() {
+    const familyEvents = this._getFamilyMediaEvents()
+
+    if (!familyEvents.length) {
+      return ''
+    }
+
+    return html`
+      <h4>${this._('Family & marriage')}</h4>
+
+      ${familyEvents.map(({event, media, mediaRef}) => {
+        const formattedDate = event.date
+          ? new Intl.DateTimeFormat(this.appState.i18n.lang || 'en', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+              timeZone: 'UTC',
+            }).format(new Date(`${event.date}T00:00:00Z`))
+          : ''
+
+        const eventTitle = [
+          event.label || event.type || 'Family event',
+          formattedDate,
+          event.place?.display_name || '',
+        ]
+          .filter(Boolean)
+          .join(' · ')
+
+        return html`
+          <h5>${eventTitle}</h5>
+          <grampsjs-gallery
+            .appState="${this.appState}"
+            .media=${media}
+            .mediaRef=${mediaRef}
+          ></grampsjs-gallery>
+        `
+      })}
+    `
+  }
+
   renderSectionContent(sectionKey) {
+    if (sectionKey === 'gallery' && !this.edit) {
+      if (!this.timelineData.length) {
+        fireEvent(this, 'person:timeline-needed')
+      }
+
+      return html`
+        ${super.renderSectionContent(sectionKey)} ${this._renderFamilyMedia()}
+      `
+    }
+
     if (sectionKey !== 'events' || this.edit) {
       return super.renderSectionContent(sectionKey)
     }
