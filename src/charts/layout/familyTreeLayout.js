@@ -415,7 +415,8 @@ const ancestryPerson = (
   root,
   settings,
   sideDirection = 0,
-  includeUnresolved = false
+  includeUnresolved = false,
+  expandedFamilies = new Set()
 ) => {
   const contours = new Map([[0, cardInterval(0, settings)]])
   const block = {nodes: [root], relationships: [], links: [], contours}
@@ -434,6 +435,33 @@ const ancestryPerson = (
   }
 
   const {parentFamily} = data
+  const familyHandle = parentFamily.family.handle
+
+  if (expandedFamilies.has(familyHandle)) {
+    root.hasHiddenAncestors = true
+
+    const existingContinuation = root.continuations.find(
+      continuation => continuation.direction === 'ancestors'
+    )
+
+    if (existingContinuation) {
+      if (!existingContinuation.familyHandles.includes(familyHandle)) {
+        existingContinuation.familyHandles.push(familyHandle)
+      }
+    } else {
+      root.continuations.push({
+        key: `${root.key}:continuation:ancestors`,
+        personHandle: root.handle,
+        direction: 'ancestors',
+        familyHandles: [familyHandle],
+      })
+    }
+
+    return block
+  }
+
+  expandedFamilies.add(familyHandle)
+
   const makeParent = (parentData, role) => {
     if (!parentData || (!parentData.person && !includeUnresolved)) {
       return undefined
@@ -450,7 +478,8 @@ const ancestryPerson = (
       parent,
       settings,
       role === 'father' ? -1 : 1,
-      includeUnresolved
+      includeUnresolved,
+      expandedFamilies
     )
   }
   const fatherBlock = makeParent(parentFamily.father, 'father')

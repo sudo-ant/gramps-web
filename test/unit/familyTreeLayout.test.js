@@ -1710,6 +1710,65 @@ describe('layoutFamilyTree', () => {
     ).toBe(false)
   })
 
+  it('shows shared ancestry through one cousin branch only', () => {
+    const sharedParents = family('F_SHARED', 'SF', 'SM', ['A', 'B'])
+    const leftParents = family('F_LEFT', 'A', 'AL', ['L'])
+    const rightParents = family('F_RIGHT', 'B', 'BR', ['R'])
+    const focalParents = family('F_FOCAL', 'L', 'R', ['C'])
+
+    const graph = new FamilyGraph([
+      person('C', {parentFamily: focalParents}),
+      person('L', {parentFamily: leftParents}),
+      person('R', {parentFamily: rightParents}),
+      person('A', {parentFamily: sharedParents}),
+      person('B', {parentFamily: sharedParents}),
+      person('AL'),
+      person('BR'),
+      person('SF'),
+      person('SM'),
+    ])
+
+    const layout = layoutFamilyTree(graph, 'C', {
+      ancestorDepth: 3,
+      descendantDepth: 0,
+    })
+
+    expect(layout.nodes.filter(node => node.handle === 'SF')).toHaveLength(1)
+    expect(layout.nodes.filter(node => node.handle === 'SM')).toHaveLength(1)
+
+    expect(
+      layout.relationships.filter(
+        relationship => relationship.family.handle === 'F_SHARED'
+      )
+    ).toHaveLength(1)
+
+    const sharedLinks = layout.links.filter(
+      link => link.relationship.family.handle === 'F_SHARED'
+    )
+
+    expect(sharedLinks).toHaveLength(1)
+    expect(['A', 'B']).toContain(sharedLinks[0].target.handle)
+
+    const collapsedHandle = sharedLinks[0].target.handle === 'A' ? 'B' : 'A'
+    const collapsedNode = layout.nodes.find(
+      node => node.handle === collapsedHandle
+    )
+
+    expect(collapsedNode.hasHiddenAncestors).toBe(true)
+    expect(
+      collapsedNode.continuations.some(
+        continuation =>
+          continuation.direction === 'ancestors' &&
+          continuation.familyHandles.includes('F_SHARED')
+      )
+    ).toBe(true)
+
+    expect(layout.nodes.some(node => node.handle === 'L')).toBe(true)
+    expect(layout.nodes.some(node => node.handle === 'R')).toBe(true)
+
+    expectNoCardOverlaps(layout)
+  })
+
   it('returns deterministic coordinates and bounds containing all geometry', () => {
     const people = ancestryPeople(3)
     const graph = new FamilyGraph(people)
