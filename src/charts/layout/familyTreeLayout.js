@@ -240,9 +240,19 @@ const placeRelationshipCentres = (items, data, settings, includeUnresolved) => {
         : preferredDirection
     if (hasPartner) {
       const previous = previousPartnerX.get(direction)
-      const distance = previous
+      const minimumDistance = previous
         ? Math.abs(previous) + boxWidth + sexStripExtent + familyGap
         : step
+
+      const childExtent = contourExtent(item.childBlock.contours)
+      const branchDistance =
+        index > 0 && item.childBlock.nodes.length > 0
+          ? direction < 0
+            ? Math.max(0, -childExtent.min)
+            : Math.max(0, childExtent.max)
+          : 0
+
+      const distance = Math.max(minimumDistance, branchDistance)
       item.partnerX = direction * distance
       previousPartnerX.set(direction, item.partnerX)
       item.x = item.partnerX / 2

@@ -483,7 +483,7 @@ describe('FamilyTreeChart', () => {
     expect(path).not.toMatch(/[CQ]/)
   })
 
-  it('draws a sibling bus without Bezier curves', () => {
+  it('draws one shared sibling bus with separate child drops', () => {
     const siblingFamily = family('FS', 'R', 'P', ['C1', 'C2', 'C3'])
     const siblingGraph = new FamilyGraph([
       person('R', {families: [siblingFamily]}),
@@ -500,13 +500,23 @@ describe('FamilyTreeChart', () => {
 
     chart.update(layout, size)
 
-    const paths = [
+    const childPaths = [
       ...chart.node.querySelectorAll('#chart-content > g:first-of-type .link'),
     ].map(path => path.getAttribute('d'))
-    expect(paths).toHaveLength(3)
-    expect(paths.every(path => path.includes('V'))).toBe(true)
-    expect(paths.some(path => path.includes('H'))).toBe(true)
-    expect(paths.every(path => !/[CQ]/.test(path))).toBe(true)
+
+    const siblingBuses = [
+      ...chart.node.querySelectorAll('path.relationship-descendant-route'),
+    ].map(path => path.getAttribute('d'))
+
+    expect(childPaths).toHaveLength(3)
+    expect(childPaths.every(path => path.includes('V'))).toBe(true)
+    expect(childPaths.every(path => !path.includes('H'))).toBe(true)
+    expect(childPaths.every(path => !/[CQ]/.test(path))).toBe(true)
+
+    expect(siblingBuses).toHaveLength(1)
+    expect(siblingBuses[0]).toContain('V')
+    expect(siblingBuses[0]).toContain('H')
+    expect(siblingBuses[0]).not.toMatch(/[CQ]/)
   })
 
   it('does not treat relationship junctions as person cards', () => {

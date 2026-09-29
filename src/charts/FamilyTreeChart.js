@@ -74,10 +74,34 @@ export class FamilyTreeChart extends ChartCanvas {
     this._root = layout.nodes.find(node => node.generation === 0)
 
     this._relationshipNodes = new Map(
-      layout.relationships.map(relationship => [
-        relationship,
-        relationshipNode(relationship),
-      ])
+      layout.relationships.map(relationship => {
+        const links = layout.links.filter(
+          link => link.relationship === relationship && link.points.length >= 4
+        )
+
+        const node = relationshipNode(relationship)
+
+        if (links.length) {
+          const origin = links[0].points[0]
+          const busY = links[0].points[1].y
+          const childXs = links.map(link => link.points.at(-1).x)
+
+          node.descendantRoute = [
+            [
+              {x: origin.x, y: origin.y},
+              {x: origin.x, y: busY},
+            ],
+            [
+              {x: Math.min(origin.x, ...childXs), y: busY},
+              {x: Math.max(origin.x, ...childXs), y: busY},
+            ],
+          ]
+        } else {
+          node.descendantRoute = []
+        }
+
+        return [relationship, node]
+      })
     )
 
     this._keys = personJoinKeys(layout)
@@ -142,15 +166,17 @@ export class FamilyTreeChart extends ChartCanvas {
   }
 
   linkPath([source, target], treeLink) {
-    if (source[0] === target[0]) {
+    if (treeLink.points.length < 4) {
       return `M${source[0]},${source[1]}V${target[1]}`
     }
+
     const points = treeLink.points
     const first = points[0]
     const last = points.at(-1)
     const busRatio = (points[1].y - first.y) / (last.y - first.y)
     const busY = source[1] + busRatio * (target[1] - source[1])
-    return `M${source[0]},${source[1]}V${busY}H${target[0]}V${target[1]}`
+
+    return `M${target[0]},${busY}V${target[1]}`
   }
 
   styleLinks(links, palette) {
@@ -181,6 +207,16 @@ export class FamilyTreeChart extends ChartCanvas {
       .classed('primary-partnership', node => node.coupleLane === 0)
       .classed('secondary-partnership', node => node.coupleLane > 0)
       .attr('transform', node => translate([node.x, node.y]))
+
+    partnershipGroups
+      .selectAll('path.relationship-descendant-route')
+      .data(node => (node.descendantRoute.length ? [node] : []))
+      .join('path')
+      .attr('class', 'relationship-descendant-route descendant-connector')
+      .attr('d', node => routePath(node.descendantRoute, node))
+      .attr('fill', 'none')
+      .attr('stroke', palette.link)
+      .attr('stroke-opacity', 0.4)
 
     partnershipGroups
       .selectAll('circle.relationship-junction')
