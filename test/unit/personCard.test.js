@@ -40,6 +40,10 @@ const people = {
       sex: 'U',
     },
   },
+  unknown: {
+    handle: 'h5',
+    profile: {gramps_id: 'I5', sex: 'F'},
+  },
   notFetched: {},
 }
 
@@ -103,6 +107,16 @@ describe('appendPersonCard', () => {
     })
     expect(texts(cards.full)).toEqual(['Anna', 'Berg', '*1900', '†1980'])
     expect(texts(cards.noSurname)).toEqual(['Carl', '…'])
+  })
+
+  it('labels a resolved unnamed person only when given an Unknown label', () => {
+    const cards = renderCards({unknownName: 'Unknown'})
+
+    expect(texts(cards.unknown)).toEqual(['Unknown'])
+    expect(texts(cards.notFetched)).toEqual([])
+    expect(cards.unknown.querySelector('text').getAttribute('y')).toBe(
+      cards.full.querySelector('text').getAttribute('y')
+    )
   })
 
   it('shortens names that do not fit', () => {

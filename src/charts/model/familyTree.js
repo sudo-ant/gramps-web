@@ -13,6 +13,22 @@ const otherPartnerHandle = (family, handle) => {
   return ''
 }
 
+const isPartnerFamily = (family, handle) =>
+  family.father_handle === handle || family.mother_handle === handle
+
+const partnerFamilies = (graph, handle) =>
+  graph
+    .partnerFamilies(handle)
+    .filter(family => isPartnerFamily(family, handle))
+
+export const isResolvedFamilyTreePerson = person =>
+  Boolean(person?.handle && person?.profile?.gramps_id)
+
+const resolvedPerson = (graph, handle) => {
+  const person = graph.person(handle)
+  return isResolvedFamilyTreePerson(person) ? person : undefined
+}
+
 const birthChildren = (family, parentHandle) => {
   const relationKey =
     family.father_handle === parentHandle
@@ -32,7 +48,7 @@ const birthChildren = (family, parentHandle) => {
 
 export const getFamilyTree = (graph, handle, descendantDepth) => {
   const buildPerson = (personHandle, depth, path) => {
-    const person = graph.person(personHandle)
+    const person = resolvedPerson(graph, personHandle)
 
     const node = {
       key: path,
@@ -40,6 +56,7 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
       person,
       depth,
       families: [],
+      hiddenDescendantFamilyHandles: [],
       hasHiddenParents: person
         ? graph.parentFamilies(personHandle).length > 0
         : false,
@@ -51,20 +68,27 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
     }
 
     if (depth >= descendantDepth) {
-      node.hasHiddenFamilies = graph.partnerFamilies(personHandle).length > 0
+      node.hiddenDescendantFamilyHandles = partnerFamilies(graph, personHandle)
+        .map(family => family.handle)
+        .filter(Boolean)
+      node.hasHiddenFamilies = node.hiddenDescendantFamilyHandles.length > 0
       return node
     }
 
-    node.families = graph
-      .partnerFamilies(personHandle)
-      .map((family, familyIndex) => {
+    // The API's family-list order is the only stable primary-partnership
+    // ordering available here. Ignore any parent-family record that is
+    // accidentally present in that list.
+    node.families = partnerFamilies(graph, personHandle).map(
+      (family, familyIndex) => {
         const partnerHandle = otherPartnerHandle(family, personHandle)
 
         return {
           key: `${path}f${familyIndex}`,
           family,
           partnerHandle,
-          partner: partnerHandle ? graph.person(partnerHandle) : undefined,
+          partner: partnerHandle
+            ? resolvedPerson(graph, partnerHandle)
+            : undefined,
           children: birthChildren(family, personHandle).map(
             (childHandle, childIndex) =>
               buildPerson(
@@ -74,7 +98,8 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
               )
           ),
         }
-      })
+      }
+    )
 
     return node
   }
@@ -89,13 +114,14 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
     path,
     descendantFamilyHandle = ''
   ) => {
-    const person = graph.person(personHandle)
+    const person = resolvedPerson(graph, personHandle)
     const parentFamilies = person ? graph.parentFamilies(personHandle) : []
     const primaryFamily = parentFamilies[0]
     const sideFamilies =
       person && depth > 0
         ? graph
             .partnerFamilies(personHandle)
+            .filter(family => isPartnerFamily(family, personHandle))
             .filter(family => family.handle !== descendantFamilyHandle)
             .map((family, familyIndex) => {
               const partnerHandle = otherPartnerHandle(family, personHandle)
@@ -104,7 +130,7 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
                 family,
                 partnerHandle,
                 partner: partnerHandle
-                  ? graph.person(partnerHandle)
+                  ? resolvedPerson(graph, partnerHandle)
                   : undefined,
                 children: [],
               }
@@ -118,6 +144,7 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
       depth,
       parentFamily: undefined,
       sideFamilies,
+      hiddenAncestorFamilyHandles: [],
       hasAdditionalParentFamilies: parentFamilies.length > 1,
       hasHiddenPrimaryParents: false,
     }
@@ -127,6 +154,7 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
     }
 
     if (depth >= ancestorDepth) {
+      node.hiddenAncestorFamilyHandles = [primaryFamily.handle].filter(Boolean)
       node.hasHiddenPrimaryParents = true
       return node
     }

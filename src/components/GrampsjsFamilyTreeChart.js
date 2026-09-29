@@ -15,7 +15,6 @@ export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
       nDesc: {type: Number},
       nameDisplayFormat: {type: String},
       canEdit: {type: Boolean},
-      viewportTopInset: {type: Number},
     }
   }
 
@@ -24,7 +23,6 @@ export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
     this.grampsId = ''
     this.nAnc = 4
     this.nDesc = 1
-    this.viewportTopInset = 0
     this._chart = new FamilyTreeChart()
     this._layout = null
   }
@@ -74,12 +72,12 @@ export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
     this._chart.update(this._layout, {
       getImageUrl: d => getImageUrl(d.person ?? {}, 100),
       showImagePlaceholder: true,
+      unknownName: this._('Unknown'),
       bboxWidth: this.containerWidth,
       bboxHeight: this.containerHeight,
       nameDisplayFormat: this.nameDisplayFormat,
       canEdit: this.canEdit,
       duration: chartTransitionDuration(),
-      viewportInsets: {top: this.viewportTopInset},
     })
   }
 }

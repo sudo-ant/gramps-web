@@ -109,6 +109,20 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           --grampsjs-pill-toggle-padding: 9px 16px;
         }
 
+        #tabs.family-tree-header {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          height: auto;
+          min-height: 60px;
+        }
+
+        .family-tree-header .tree-view-selectors {
+          flex: 1 1 900px;
+          min-width: 0;
+        }
+
         #controls {
           position: absolute;
           background-color: var(--md-sys-color-surface-container-low);
@@ -171,10 +185,16 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           cursor: pointer;
         }
 
-        .family-tree-chart-area #controls,
-        .family-tree-chart-area #selected-person {
-          right: 0;
-          left: auto;
+        .family-tree-header #controls {
+          position: static;
+          flex: none;
+          margin-left: auto;
+        }
+
+        .family-tree-header #selected-person {
+          position: static;
+          flex: 0 1 auto;
+          min-width: 0;
         }
 
         #selected-person:hover {
@@ -452,15 +472,21 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
       return this._renderNoHomePerson()
     }
     const {editable} = this.definition
+    const familyHeader = this.chart === 'family'
     return html`
-      <div id="tabs">${this.renderTabs()}</div>
-      <div
-        class=${this.chart === 'family' ? 'family-tree-chart-area' : ''}
-        style="position: relative;"
-      >
-        <div id="controls">${this.renderControls()}</div>
+      <div id="tabs" class=${familyHeader ? 'family-tree-header' : ''}>
+        <div class="tree-view-selectors">${this.renderTabs()}</div>
+        ${familyHeader
+          ? html`<div id="controls">${this.renderControls()}</div>
+              ${this.renderSelectedPerson()}`
+          : ''}
+      </div>
+      <div style="position: relative;">
+        ${familyHeader
+          ? ''
+          : html`<div id="controls">${this.renderControls()}</div>`}
         <div id="chart">${this.renderChart()}</div>
-        ${this.renderSelectedPerson()}
+        ${familyHeader ? '' : this.renderSelectedPerson()}
       </div>
       ${editable && this.appState.permissions.canEdit && !this._editMode
         ? this.renderFab()

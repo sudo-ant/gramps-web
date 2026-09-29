@@ -1,4 +1,4 @@
-import {render} from 'lit'
+import {html, render} from 'lit'
 import {describe, it, expect, vi} from 'vitest'
 import {
   chartDataUrl,
@@ -29,6 +29,13 @@ const person = (
 ) => ({
   handle,
   gramps_id: grampsId,
+  profile: {
+    gramps_id: grampsId,
+    name_display: handle,
+    name_given: handle,
+    name_surname: '',
+    sex: 'U',
+  },
   extended: {
     primary_parent_family: parentFamily,
     families,
@@ -121,7 +128,6 @@ describe('chart definitions', () => {
     expect(chart.grampsId).toBe('I1')
     expect(chart.nAnc).toBe(5)
     expect(chart.nDesc).toBe(2)
-    expect(chart.viewportTopInset).toBe(128)
     expect(chart.nameDisplayFormat).toBe(
       chartNameDisplayFormat.givenThenSurname
     )
@@ -198,6 +204,72 @@ describe('chart definitions', () => {
     // The existing filter counts the focal person, while the Family Tree
     // model currently creates ancestor nodes through ancestors + 1.
     expect(handlesOf(url)).toEqual(['GF', 'GM'])
+  })
+
+  it('requests and replaces a partial referenced person record', () => {
+    const parents = family('FP', 'F', 'M', ['R'])
+    const motherFamily = family('FM', 'MP', 'M', [])
+    const partialMother = {
+      handle: 'M',
+      gramps_id: 'I_M',
+      profile: {sex: 'F'},
+      extended: {families: [motherFamily]},
+    }
+    const root = person('R', {grampsId: 'I1', parentFamily: parents})
+    const resolvedMother = person('M', {
+      grampsId: 'I_M',
+      families: [motherFamily],
+    })
+
+    const url = familyTreeCompletionUrl(
+      [root, person('F'), partialMother],
+      'I1',
+      {ancestors: 1, descendants: 0},
+      'en'
+    )
+    const merged = mergePeopleByHandle(
+      [root, person('F'), partialMother],
+      [resolvedMother]
+    )
+
+    expect(handlesOf(url)).toEqual(['M'])
+    expect(merged).toHaveLength(3)
+    expect(merged[2].profile.gramps_id).toBe('I_M')
+    expect(merged[2].profile.sex).toBe('U')
+    expect(merged[2].extended.families).toEqual([motherFamily])
+  })
+
+  it("accepts Philip Anthony Levi's explicit Unknown mother as resolved", () => {
+    const parents = family('F500040', '', 'BLANK', ['PHILIP'])
+    const philip = person('PHILIP', {
+      grampsId: 'I0143',
+      parentFamily: parents,
+    })
+    const blankMother = {
+      handle: 'BLANK',
+      gramps_id: 'I500159',
+      profile: {
+        gramps_id: 'I500159',
+        name_display: '',
+        name_given: '',
+        name_surname: '',
+        birth: {},
+        death: {date: ''},
+        sex: 'F',
+      },
+      extended: {families: [parents]},
+    }
+
+    const url = familyTreeCompletionUrl(
+      [philip, blankMother],
+      'I0143',
+      {ancestors: 1, descendants: 0},
+      'en'
+    )
+    const merged = mergePeopleByHandle([philip, blankMother], [blankMother])
+
+    expect(url).toBe('')
+    expect(merged).toEqual([philip, blankMother])
   })
 
   it('does not request people when every displayed person is loaded', () => {
@@ -371,23 +443,62 @@ describe('GrampsjsViewTree', () => {
     ])
   })
 
-  it('marks only the Family Tree chart area for right-side overlays', () => {
+  it('places only Family Tree controls in the normal header layout', () => {
     const {view} = makeView()
     view.appState.i18n.strings = {}
     view.appState.permissions = {canEdit: false}
     view.renderTabs = () => ''
     view.renderControls = () => ''
     view.renderChart = () => ''
-    view.renderSelectedPerson = () => ''
+    view.renderSelectedPerson = () =>
+      html`<button id="selected-person" aria-label="Selected person"></button>`
     const container = document.createElement('div')
 
     useFamilyTree(view)
     render(view.renderContent(), container)
-    expect(container.querySelector('.family-tree-chart-area')).not.toBeNull()
+    const familyHeader = container.querySelector('#tabs')
+    expect(familyHeader.classList.contains('family-tree-header')).toBe(true)
+    expect(familyHeader.querySelector('#controls')).not.toBeNull()
+    expect(familyHeader.querySelector('#selected-person')).not.toBeNull()
+    expect(
+      container.querySelector('#chart').parentElement.querySelector('#controls')
+    ).toBeNull()
 
     view._currentTabId = TREE_VIEWS.indexOf('ancestor')
     render(view.renderContent(), container)
-    expect(container.querySelector('.family-tree-chart-area')).toBeNull()
+    const ancestorHeader = container.querySelector('#tabs')
+    expect(ancestorHeader.classList.contains('family-tree-header')).toBe(false)
+    expect(ancestorHeader.querySelector('#controls')).toBeNull()
+    expect(
+      container.querySelector('#chart').parentElement.querySelector('#controls')
+    ).not.toBeNull()
+  })
+
+  it('keeps desktop tree-view labels in a responsive non-overlapping row', () => {
+    const {view} = makeView()
+    view.appState.i18n.strings = {}
+    const container = document.createElement('div')
+
+    render(view.renderTabs(), container)
+    const toggle = container.querySelector('grampsjs-pill-toggle')
+
+    expect(toggle.options.map(option => option.label)).toEqual([
+      'Family Tree',
+      'Ancestor Tree',
+      'Descendant Tree',
+      'Hourglass Graph',
+      'Relationship Graph',
+      'Fan Chart',
+    ])
+    expect(toggle.iconsOnlyNarrow).toBe(true)
+
+    const styles = GrampsjsViewTree.styles
+      .flat(Infinity)
+      .map(style => style.cssText ?? '')
+      .join('\n')
+    expect(styles).toContain('flex-wrap: wrap')
+    expect(styles).toContain('flex: 1 1 900px')
+    expect(styles).toContain('margin-left: auto')
   })
 
   it('does not pass people fetched for one chart to another', () => {

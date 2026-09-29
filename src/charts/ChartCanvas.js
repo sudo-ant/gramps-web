@@ -36,7 +36,7 @@ export const place = node => [node.x, node.y]
 // - `isRootPerson(node)`: whether the node is the root person's card, which
 //   gets a shadow.
 // - `linkEnds(link)`: the start and end of a link, which move with its source
-//   and target node, and `linkPath(ends)`: the path between them.
+//   and target node, and `linkPath(ends, link)`: the path between them.
 // - `styleLinks(links, palette)`: the stroke of the links.
 // - Optionally `drawnNodes(layout)` and `drawnLinks(layout)`: the nodes and
 //   links to draw, `isPerson(node)`, and `drawExtras(nodes, options)`: whatever
@@ -133,6 +133,7 @@ export class ChartCanvas {
       boxWidth,
       boxHeight,
       showImagePlaceholder: settings.showImagePlaceholder,
+      unknownName: settings.unknownName,
     })
     updatePersonCardInteraction(people, {
       interactive,
@@ -169,7 +170,9 @@ export class ChartCanvas {
         key: link => this.linkKey(link),
         enter: enter => enter.append('path').attr('class', 'link'),
         exit: exit =>
-          exit.attr('d', link => this.linkPath(this.linkEnds(link).map(shift))),
+          exit.attr('d', link =>
+            this.linkPath(this.linkEnds(link).map(shift), link)
+          ),
         duration,
       }
     )
@@ -188,10 +191,10 @@ export class ChartCanvas {
           const [start, end] = this.linkEnds(link)
           const from = interpolatePoint(startOf(start, link.source), start)
           const to = interpolatePoint(startOf(end, link.target), end)
-          return t => this.linkPath([from(t), to(t)])
+          return t => this.linkPath([from(t), to(t)], link)
         })
     } else {
-      links.attr('d', link => this.linkPath(this.linkEnds(link)))
+      links.attr('d', link => this.linkPath(this.linkEnds(link), link))
     }
   }
 

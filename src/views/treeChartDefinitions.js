@@ -14,6 +14,7 @@ import '../components/GrampsjsTooltip.js'
 import '../components/GrampsjsTreeChart.js'
 import {FamilyGraph} from '../charts/model/FamilyGraph.js'
 import {layoutFamilyTree} from '../charts/layout/familyTreeLayout.js'
+import {isResolvedFamilyTreePerson} from '../charts/model/familyTree.js'
 import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 
 // A chart definition describes one chart of the tree view:
@@ -46,6 +47,7 @@ export function familyTreeCompletionUrl(data, grampsId, values, lang) {
   const layout = layoutFamilyTree(graph, handle, {
     ancestorDepth: values.ancestors + 1,
     descendantDepth: values.descendants + 1,
+    includeUnresolved: true,
   })
   const handles = [
     ...new Set(
@@ -63,17 +65,39 @@ export function familyTreeCompletionUrl(data, grampsId, values, lang) {
 }
 
 export function mergePeopleByHandle(initial, additional) {
-  const handles = new Set(initial.map(person => person.handle))
-  return [
-    ...initial,
-    ...additional.filter(person => {
-      if (!person.handle || handles.has(person.handle)) {
-        return false
-      }
+  const replacements = new Map()
+  additional.forEach(person => {
+    if (
+      person.handle &&
+      (!replacements.has(person.handle) || isResolvedFamilyTreePerson(person))
+    ) {
+      replacements.set(person.handle, person)
+    }
+  })
+  const handles = new Set()
+  const merged = initial.map(person => {
+    handles.add(person.handle)
+    const replacement = replacements.get(person.handle)
+    if (
+      isResolvedFamilyTreePerson(person) ||
+      !isResolvedFamilyTreePerson(replacement)
+    ) {
+      return person
+    }
+    return {
+      ...person,
+      ...replacement,
+      profile: {...person.profile, ...replacement.profile},
+      extended: {...person.extended, ...replacement.extended},
+    }
+  })
+  additional.forEach(person => {
+    if (person.handle && !handles.has(person.handle)) {
       handles.add(person.handle)
-      return true
-    }),
-  ]
+      merged.push(replacements.get(person.handle))
+    }
+  })
+  return merged
 }
 
 function treeRules(grampsId, ancestorGenerations, descendantGenerations) {
@@ -220,7 +244,6 @@ export const chartDefinitions = {
         grampsId=${grampsId}
         nAnc=${values.ancestors + 1}
         nDesc=${values.descendants + 1}
-        viewportTopInset="128"
         nameDisplayFormat=${values.nameDisplayFormat}
         ?canEdit="${canEdit}"
         .data=${data}

@@ -76,6 +76,7 @@ describe('GrampsjsFamilyTreeChart', () => {
     element.containerHeight = 600
     element.nameDisplayFormat = 1
     element.canEdit = true
+    element.appState = {i18n: {strings: {Unknown: 'Unbekannt'}}}
 
     element._drawChart()
 
@@ -87,7 +88,6 @@ describe('GrampsjsFamilyTreeChart', () => {
         nameDisplayFormat: 1,
         canEdit: true,
         duration: 321,
-        viewportInsets: {top: 0},
       })
     )
     const options = mocks.update.mock.calls[0][1]
@@ -95,16 +95,8 @@ describe('GrampsjsFamilyTreeChart', () => {
     expect(options.getImageUrl({person: undefined})).toBe('')
     expect(mocks.getImageUrl).toHaveBeenLastCalledWith({}, 100)
     expect(options.showImagePlaceholder).toBe(true)
-  })
-
-  it('passes its configured top safe area to the renderer', () => {
-    const element = new GrampsjsFamilyTreeChart()
-    element._layout = {nodes: []}
-    element.viewportTopInset = 128
-
-    element._drawChart()
-
-    expect(mocks.update.mock.calls[0][1].viewportInsets).toEqual({top: 128})
+    expect(options.unknownName).toBe('Unbekannt')
+    expect(options).not.toHaveProperty('viewportInsets')
   })
 
   it('retains the current layout while a missing selected person is fetched', () => {

@@ -8,7 +8,8 @@ export const familyTreeLayoutDefaults = {
   generationGap: 50,
   siblingGap: 24,
   familyGap: 32,
-  connectorLaneGap: 12,
+  partnershipLaneGap: 6,
+  continuationExtent: 26,
   padding: 20,
 }
 
@@ -72,6 +73,9 @@ const translateBlock = (block, x, levelOffset = 0) => {
   block.relationships.forEach(relationship => {
     relationship.x += x
     relationship.coupleX += x
+    if (Number.isFinite(relationship.childX)) {
+      relationship.childX += x
+    }
     relationship.level += levelOffset
   })
   block.contours = shiftedContours(block.contours, x, levelOffset)
@@ -139,20 +143,60 @@ const cardInterval = (x, {boxWidth, sexStripExtent}) => ({
   max: x + boxWidth / 2,
 })
 
-const personNode = (data, level, x, key = data.key) => ({
-  key,
-  handle: data.handle,
-  person: data.person,
-  level,
-  x,
-  y: 0,
-})
+const personNode = (data, level, x, key = data.key) => {
+  const continuation = (direction, familyHandles) => ({
+    key: `${key}:continuation:${direction}`,
+    personHandle: data.handle,
+    direction,
+    familyHandles,
+  })
+  const ancestorFamilies = data.hiddenAncestorFamilyHandles ?? []
+  const descendantFamilies = data.hiddenDescendantFamilyHandles ?? []
+
+  return {
+    key,
+    handle: data.handle,
+    person: data.person,
+    level,
+    x,
+    y: 0,
+    continuations: [
+      ...(ancestorFamilies.length
+        ? [continuation('ancestors', ancestorFamilies)]
+        : []),
+      ...(descendantFamilies.length
+        ? [continuation('descendants', descendantFamilies)]
+        : []),
+    ],
+    hasHiddenAncestors: ancestorFamilies.length > 0,
+    hasHiddenDescendants: descendantFamilies.length > 0,
+  }
+}
 
 const coupleStep = settings =>
   settings.boxWidth + settings.sexStripExtent + settings.partnerGap
 
-const childSeparation = (left, right, gap) =>
-  Math.max(0, requiredRightPosition(left.contours, right.contours, gap))
+const recordedSex = person => person?.profile?.sex
+
+// Keep the API/family order unless the pair is explicitly recorded M/F.
+const partnerDirection = (person, partner, fallback = 1) => {
+  const personSex = recordedSex(person)
+  const partnerSex = recordedSex(partner)
+  if (personSex === 'M' && partnerSex === 'F') {
+    return 1
+  }
+  if (personSex === 'F' && partnerSex === 'M') {
+    return -1
+  }
+  return fallback
+}
+
+const familyDirection = (family, sharedHandle) =>
+  family.father_handle === sharedHandle
+    ? 1
+    : family.mother_handle === sharedHandle
+    ? -1
+    : 1
 
 const ancestrySeparation = (left, right, settings) => {
   let separation = 0
@@ -166,117 +210,96 @@ const ancestrySeparation = (left, right, settings) => {
   return separation
 }
 
-// Relationship centres are solved first. A partner is always reflected across
-// its relationship centre from the shared person at x=0.
-const placeRelationshipCentres = (items, settings) => {
-  const {familyGap} = settings
+// Partner cards occupy compact, deterministic positions independently of the
+// width of their descendant subtrees. The child blocks are then packed on the
+// appropriate side without stretching the partnership itself.
+const placeRelationshipCentres = (items, data, settings, includeUnresolved) => {
+  const {boxWidth, sexStripExtent, familyGap} = settings
   const step = coupleStep(settings)
-  const halfStep = step / 2
-  const known = items.filter(item => item.family.partnerHandle)
-  const unknown = items.filter(item => !item.family.partnerHandle)
   const placed = new Map()
+  const previousPartnerX = new Map([
+    [-1, 0],
+    [1, 0],
+  ])
+  let primaryDirection
 
-  if (known.length === 1) {
-    known[0].x = halfStep
-    translatedInto(placed, known[0].childBlock, known[0].x)
-  } else if (known.length >= 2) {
-    const separation = Math.max(
-      step,
-      childSeparation(known[0].childBlock, known[1].childBlock, familyGap)
+  items.forEach((item, index) => {
+    const hasPartner = Boolean(
+      item.family.partnerHandle && (item.family.partner || includeUnresolved)
     )
-    known[0].x = -separation / 2
-    known[1].x = separation / 2
-    translatedInto(placed, known[0].childBlock, known[0].x)
-    translatedInto(placed, known[1].childBlock, known[1].x)
-
-    let left = known[0]
-    let right = known[1]
-    known.slice(2).forEach((item, index) => {
-      if (index % 2 === 0) {
-        const collision = requiredLeftPosition(
-          placed,
-          item.childBlock.contours,
-          familyGap
-        )
-        item.x = Math.min(
-          left.x - halfStep,
-          Number.isFinite(collision) ? collision : Infinity
-        )
-        left = item
-      } else {
-        const collision = requiredRightPosition(
-          placed,
-          item.childBlock.contours,
-          familyGap
-        )
-        item.x = Math.max(
-          right.x + halfStep,
-          Number.isFinite(collision) ? collision : -Infinity
-        )
-        right = item
-      }
-      translatedInto(placed, item.childBlock, item.x)
-    })
-  }
-
-  unknown.forEach((item, index) => {
-    if (known.length === 0 && index === 0) {
-      item.x = 0
-    } else if (index % 2 === 0) {
-      const collision = requiredLeftPosition(
-        placed,
-        item.childBlock.contours,
-        familyGap
-      )
-      item.x = Number.isFinite(collision) ? collision : -familyGap
-    } else {
-      const collision = requiredRightPosition(
-        placed,
-        item.childBlock.contours,
-        familyGap
-      )
-      item.x = Number.isFinite(collision) ? collision : familyGap
+    const fallback = familyDirection(item.family.family, data.handle)
+    const preferredDirection = hasPartner
+      ? partnerDirection(data.person, item.family.partner, fallback)
+      : fallback
+    if (hasPartner && primaryDirection === undefined) {
+      primaryDirection = preferredDirection
     }
-    translatedInto(placed, item.childBlock, item.x)
+    const direction =
+      hasPartner && item.childBlock.nodes.length === 0 && index > 0
+        ? -(primaryDirection ?? preferredDirection)
+        : preferredDirection
+    if (hasPartner) {
+      const previous = previousPartnerX.get(direction)
+      const distance = previous
+        ? Math.abs(previous) + boxWidth + sexStripExtent + familyGap
+        : step
+      item.partnerX = direction * distance
+      previousPartnerX.set(direction, item.partnerX)
+      item.x = item.partnerX / 2
+    } else {
+      item.x = 0
+    }
+    item.coupleLane = index
+
+    const preferredChildX = hasPartner && index > 0 ? item.partnerX : item.x
+    const collision =
+      direction < 0
+        ? requiredLeftPosition(placed, item.childBlock.contours, familyGap)
+        : requiredRightPosition(placed, item.childBlock.contours, familyGap)
+    item.childX = Number.isFinite(collision)
+      ? direction < 0
+        ? Math.min(preferredChildX, collision)
+        : Math.max(preferredChildX, collision)
+      : preferredChildX
+    translatedInto(placed, item.childBlock, item.childX)
   })
 }
 
 // Descendant blocks are measured from their person at x=0. Child blocks are
 // centred on their relationship and retain those coordinates when emitted.
-const measureDescendants = (data, settings) => {
+const measureDescendants = (data, settings, includeUnresolved) => {
+  if (!data.person && !includeUnresolved) {
+    return combineBlocks([])
+  }
   const {siblingGap} = settings
   const node = personNode(data, 0, 0)
   const nodes = [node]
   const relationships = []
   const links = []
   const contours = new Map([[0, cardInterval(0, settings)]])
-  let knownPartnerIndex = 0
-  const familyItems = data.families.map((family, index) => {
+  const familyItems = data.families.map(family => {
     const childBlock = packBlocks(
-      family.children.map(child => measureDescendants(child, settings)),
+      family.children
+        .map(child => measureDescendants(child, settings, includeUnresolved))
+        .filter(block => block.nodes.length),
       siblingGap
     )
     const item = {
-      index,
       family,
       childBlock,
-      knownPartnerIndex: family.partnerHandle ? knownPartnerIndex : undefined,
       x: 0,
-    }
-    if (family.partnerHandle) {
-      knownPartnerIndex += 1
     }
     return item
   })
 
-  placeRelationshipCentres(familyItems, settings)
+  placeRelationshipCentres(familyItems, data, settings, includeUnresolved)
 
-  let routeLane = 0
   familyItems.forEach(item => {
-    const {family, childBlock, knownPartnerIndex: partnerIndex, x} = item
-    const partner = family.partnerHandle
-      ? personNode(family, 0, 2 * x, `${family.key}:partner`)
-      : undefined
+    const {family, childBlock, childX, coupleLane, partnerX, x} = item
+    const partner =
+      family.partnerHandle && (family.partner || includeUnresolved)
+        ? personNode(family, 0, partnerX, `${family.key}:partner`)
+        : undefined
     if (partner) {
       partner.handle = family.partnerHandle
       partner.person = family.partner
@@ -284,26 +307,24 @@ const measureDescendants = (data, settings) => {
       mergeInterval(contours, 0, cardInterval(partner.x, settings))
     }
 
-    const routed = !partner || partnerIndex >= 2
-    if (routed) {
-      routeLane += 1
-    }
     const relationship = {
       key: family.key,
       family: family.family,
       person: node,
       partner,
       x,
+      childX,
       y: 0,
       level: 0,
       coupleX: x,
-      routeLane: routed ? routeLane : 0,
+      coupleLane,
       coupleRoute: [],
+      hasKnownPartner: Boolean(partner),
     }
     relationships.push(relationship)
 
     if (childBlock.nodes.length) {
-      translateBlock(childBlock, x, 1)
+      translateBlock(childBlock, childX, 1)
       nodes.push(...childBlock.nodes)
       relationships.push(...childBlock.relationships)
       links.push(...childBlock.links)
@@ -313,9 +334,12 @@ const measureDescendants = (data, settings) => {
         const target = childBlock.nodes.find(
           childNode => childNode.key === child.key && childNode.level === 1
         )
+        if (!target) {
+          return
+        }
         links.push({
           key: `${family.key}:child:${child.key}`,
-          source: relationship,
+          source: coupleLane === 0 ? relationship : partner ?? relationship,
           target,
           relationship,
         })
@@ -331,14 +355,26 @@ const addAncestorSidePartnerships = (
   data,
   root,
   direction,
-  settings
+  settings,
+  includeUnresolved
 ) => {
   const step = coupleStep(settings)
+  const counts = new Map([
+    [-1, 0],
+    [1, 0],
+  ])
   data.sideFamilies.forEach((family, index) => {
-    const partnerX = direction * step * (index + 1)
-    const partner = family.partnerHandle
-      ? personNode(family, 0, partnerX, `${family.key}:partner`)
-      : undefined
+    // Side partners stay outside the primary ancestor couple. Placing them
+    // between that couple would put the primary family's child connector
+    // behind the wrong partner card.
+    const side = direction
+    const count = counts.get(side) + 1
+    counts.set(side, count)
+    const partnerX = side * step * count
+    const partner =
+      family.partnerHandle && (family.partner || includeUnresolved)
+        ? personNode(family, 0, partnerX, `${family.key}:partner`)
+        : undefined
     if (partner) {
       partner.handle = family.partnerHandle
       partner.person = family.partner
@@ -352,23 +388,36 @@ const addAncestorSidePartnerships = (
       family: family.family,
       person: root,
       partner,
-      x: partner ? partnerX / 2 : direction * (step / 2) * (index + 1),
+      x: partner ? partnerX / 2 : root.x,
       y: 0,
       level: 0,
       ancestry: true,
       coupleX: partner ? partnerX / 2 : root.x,
-      routeLane: partner && index === 0 ? 0 : Math.max(1, index),
+      coupleLane: index + 1,
       coupleRoute: [],
       sidePartnership: true,
     })
   })
 }
 
-const ancestryPerson = (data, root, settings, sideDirection = 0) => {
+const ancestryPerson = (
+  data,
+  root,
+  settings,
+  sideDirection = 0,
+  includeUnresolved = false
+) => {
   const contours = new Map([[0, cardInterval(0, settings)]])
   const block = {nodes: [root], relationships: [], links: [], contours}
   if (sideDirection && data?.sideFamilies?.length) {
-    addAncestorSidePartnerships(block, data, root, sideDirection, settings)
+    addAncestorSidePartnerships(
+      block,
+      data,
+      root,
+      sideDirection,
+      settings,
+      includeUnresolved
+    )
   }
   if (!data?.parentFamily) {
     return block
@@ -376,7 +425,7 @@ const ancestryPerson = (data, root, settings, sideDirection = 0) => {
 
   const {parentFamily} = data
   const makeParent = (parentData, role) => {
-    if (!parentData) {
+    if (!parentData || (!parentData.person && !includeUnresolved)) {
       return undefined
     }
     const parent = personNode(
@@ -390,7 +439,8 @@ const ancestryPerson = (data, root, settings, sideDirection = 0) => {
       parentData,
       parent,
       settings,
-      role === 'father' ? -1 : 1
+      role === 'father' ? -1 : 1,
+      includeUnresolved
     )
   }
   const fatherBlock = makeParent(parentFamily.father, 'father')
@@ -401,12 +451,19 @@ const ancestryPerson = (data, root, settings, sideDirection = 0) => {
   const step = coupleStep(settings)
 
   if (fatherBlock && motherBlock) {
+    const fatherData = parentFamily.father
+    const motherData = parentFamily.mother
+    const maleFemaleReversed =
+      recordedSex(fatherData.person) === 'F' &&
+      recordedSex(motherData.person) === 'M'
+    const leftBlock = maleFemaleReversed ? motherBlock : fatherBlock
+    const rightBlock = maleFemaleReversed ? fatherBlock : motherBlock
     const separation = Math.max(
       step,
-      ancestrySeparation(fatherBlock, motherBlock, settings)
+      ancestrySeparation(leftBlock, rightBlock, settings)
     )
-    translateBlock(fatherBlock, -separation / 2, 1)
-    translateBlock(motherBlock, separation / 2, 1)
+    translateBlock(leftBlock, -separation / 2, 1)
+    translateBlock(rightBlock, separation / 2, 1)
   } else if (fatherBlock || motherBlock) {
     translateBlock(fatherBlock ?? motherBlock, 0, 1)
   }
@@ -424,7 +481,7 @@ const ancestryPerson = (data, root, settings, sideDirection = 0) => {
     level: 1,
     ancestry: true,
     coupleX: 0,
-    routeLane: father && mother ? 0 : 1,
+    coupleLane: father && mother ? 0 : 1,
     coupleRoute: [],
   }
   block.relationships.push(relationship)
@@ -443,8 +500,14 @@ const ancestryPerson = (data, root, settings, sideDirection = 0) => {
   return block
 }
 
-const layoutAncestry = (ancestry, rootNode, settings) => {
-  const block = ancestryPerson(ancestry, rootNode, settings)
+const layoutAncestry = (ancestry, rootNode, settings, includeUnresolved) => {
+  const block = ancestryPerson(
+    ancestry,
+    rootNode,
+    settings,
+    0,
+    includeUnresolved
+  )
   return {
     nodes: block.nodes.filter(node => node !== rootNode),
     relationships: block.relationships,
@@ -453,7 +516,13 @@ const layoutAncestry = (ancestry, rootNode, settings) => {
 }
 
 const setVerticalPositions = (layout, settings) => {
-  const {boxHeight, generationGap, connectorLaneGap} = settings
+  const {
+    boxWidth,
+    boxHeight,
+    sexStripExtent,
+    generationGap,
+    partnershipLaneGap,
+  } = settings
   const maxDescendantLevel = Math.max(
     0,
     ...layout.nodes.filter(node => !node.ancestry).map(node => node.level)
@@ -464,12 +533,13 @@ const setVerticalPositions = (layout, settings) => {
     .forEach(relationship => {
       lanes.set(
         relationship.level,
-        Math.max(lanes.get(relationship.level) ?? 0, relationship.routeLane)
+        Math.max(lanes.get(relationship.level) ?? 0, relationship.coupleLane)
       )
     })
   const descendantY = new Map([[0, 0]])
   for (let level = 0; level < maxDescendantLevel; level += 1) {
-    const extra = Math.max(0, (lanes.get(level) ?? 0) - 2) * connectorLaneGap
+    const extra =
+      Math.max(0, (lanes.get(level) ?? 0) - 2) * partnershipLaneGap * 2
     descendantY.set(
       level + 1,
       descendantY.get(level) + boxHeight + generationGap + extra
@@ -486,20 +556,97 @@ const setVerticalPositions = (layout, settings) => {
     const rowY = relationship.ancestry
       ? -relationship.level * (boxHeight + generationGap)
       : descendantY.get(relationship.level)
-    relationship.y = relationship.routeLane
-      ? rowY + boxHeight / 2 + relationship.routeLane * connectorLaneGap
-      : rowY
-    if (!relationship.routeLane) {
+    relationship.y = rowY - relationship.coupleLane * partnershipLaneGap
+    // A later family's trunk leaves its partner branch so it cannot be read
+    // as belonging to the shared person's primary partnership.
+    const usePartnerOrigin =
+      !relationship.ancestry &&
+      relationship.coupleLane > 0 &&
+      relationship.partner
+    const oneParentFamily = !relationship.partner
+    relationship.descendantOrigin = usePartnerOrigin
+      ? {
+          x: relationship.partner.x,
+          y: relationship.partner.y + boxHeight / 2,
+        }
+      : oneParentFamily
+      ? {
+          x: relationship.person.x,
+          y: relationship.person.y + boxHeight / 2,
+        }
+      : {x: relationship.x, y: relationship.y}
+    relationship.descendantOriginType = usePartnerOrigin
+      ? 'partner'
+      : oneParentFamily
+      ? 'person'
+      : 'relationship'
+    if (!relationship.coupleLane || oneParentFamily) {
+      relationship.coupleRoute = []
       return
     }
-    const cardBottom = rowY + boxHeight / 2
-    relationship.coupleRoute = [relationship.person, relationship.partner]
-      .filter(Boolean)
-      .map(person => [
-        {x: person.x, y: cardBottom},
-        {x: person.x, y: relationship.y},
-        {x: relationship.x, y: relationship.y},
-      ])
+    const cardEdge = (person, targetX) =>
+      targetX < person.x
+        ? person.x - boxWidth / 2 - sexStripExtent
+        : person.x + boxWidth / 2
+    relationship.coupleRoute = [
+      [
+        {
+          x: cardEdge(relationship.person, relationship.partner.x),
+          y: relationship.y,
+        },
+        {
+          x: cardEdge(relationship.partner, relationship.person.x),
+          y: relationship.y,
+        },
+      ],
+    ]
+  })
+}
+
+const compactPoints = points =>
+  points.filter(
+    (point, index) =>
+      index === 0 ||
+      point.x !== points[index - 1].x ||
+      point.y !== points[index - 1].y
+  )
+
+const setLinkRoutes = (layout, settings) => {
+  const {boxHeight} = settings
+  const byRelationship = new Map()
+  layout.links.forEach(treeLink => {
+    const links = byRelationship.get(treeLink.relationship) ?? []
+    links.push(treeLink)
+    byRelationship.set(treeLink.relationship, links)
+  })
+  byRelationship.forEach(links => {
+    const source = links[0].relationship
+    const origin = source.descendantOrigin ?? {x: source.x, y: source.y}
+    const targets = links.map(treeLink => ({
+      x: treeLink.target.x,
+      y: treeLink.target.y - boxHeight / 2,
+    }))
+    const needsBus = links.length > 1 || targets[0].x !== origin.x
+    const parentBottom =
+      Math.max(
+        ...[source.person, source.partner]
+          .filter(Boolean)
+          .map(person => person.y)
+      ) +
+      boxHeight / 2
+    const connectorStart = Math.max(origin.y, parentBottom)
+    const busY = needsBus
+      ? connectorStart + (targets[0].y - connectorStart) / 2
+      : undefined
+
+    links.forEach((treeLink, index) => {
+      const target = targets[index]
+      treeLink.points = compactPoints(
+        needsBus
+          ? [origin, {x: origin.x, y: busY}, {x: target.x, y: busY}, target]
+          : [origin, target]
+      )
+    })
   })
 }
 
@@ -513,19 +660,28 @@ const markAncestry = ancestryLayout => {
 }
 
 const withBounds = (layout, settings) => {
-  const {boxWidth, boxHeight, sexStripExtent, padding} = settings
+  const {boxWidth, boxHeight, sexStripExtent, continuationExtent, padding} =
+    settings
   const points = []
   layout.nodes.forEach(node => {
     points.push(
       {x: node.x - boxWidth / 2 - sexStripExtent, y: node.y - boxHeight / 2},
       {x: node.x + boxWidth / 2, y: node.y + boxHeight / 2}
     )
+    node.continuations.forEach(continuation => {
+      const direction = continuation.direction === 'ancestors' ? -1 : 1
+      points.push({
+        x: node.x,
+        y: node.y + direction * (boxHeight / 2 + continuationExtent),
+      })
+    })
   })
   layout.relationships.forEach(relationship => {
     points.push({x: relationship.x - 3, y: relationship.y - 3})
     points.push({x: relationship.x + 3, y: relationship.y + 3})
     relationship.coupleRoute.forEach(route => points.push(...route))
   })
+  layout.links.forEach(treeLink => points.push(...treeLink.points))
   if (points.length === 0) {
     return {...layout, bounds: {xMin: 0, xMax: 0, yMin: 0, yMax: 0}}
   }
@@ -543,14 +699,33 @@ const withBounds = (layout, settings) => {
 export function layoutFamilyTree(
   graph,
   handle,
-  {ancestorDepth = 0, descendantDepth = 1, ...options} = {}
+  {
+    ancestorDepth = 0,
+    descendantDepth = 1,
+    includeUnresolved = false,
+    ...options
+  } = {}
 ) {
   const settings = {...familyTreeLayoutDefaults, ...options}
   const data = getFamilyTree(graph, handle, descendantDepth)
   const ancestry = getPrimaryAncestry(graph, handle, ancestorDepth)
-  const descendants = measureDescendants(data, settings)
+  const descendants = measureDescendants(data, settings, includeUnresolved)
   const rootNode = descendants.nodes.find(node => node.level === 0)
-  const ancestors = layoutAncestry(ancestry, rootNode, settings)
+  rootNode.hasHiddenAncestors = ancestry.hasHiddenPrimaryParents
+  if (ancestry.hiddenAncestorFamilyHandles?.length) {
+    rootNode.continuations.push({
+      key: `${rootNode.key}:continuation:ancestors`,
+      personHandle: rootNode.handle,
+      direction: 'ancestors',
+      familyHandles: ancestry.hiddenAncestorFamilyHandles,
+    })
+  }
+  const ancestors = layoutAncestry(
+    ancestry,
+    rootNode,
+    settings,
+    includeUnresolved
+  )
   markAncestry(ancestors)
   const layout = {
     nodes: [...descendants.nodes, ...ancestors.nodes],
@@ -558,5 +733,6 @@ export function layoutFamilyTree(
     links: [...descendants.links, ...ancestors.links],
   }
   setVerticalPositions(layout, settings)
+  setLinkRoutes(layout, settings)
   return withBounds(layout, settings)
 }

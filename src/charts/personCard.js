@@ -44,6 +44,7 @@ export function appendPersonCard(
     boxHeight = 90,
     imgPadding = 10,
     showImagePlaceholder = false,
+    unknownName = '',
     nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
     palette = chartPalette,
   }
@@ -79,27 +80,46 @@ export function appendPersonCard(
   const surnameFirst =
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
   const hasName = p => p?.name_given || p?.name_surname
+  const isUnnamedPerson = p => p?.gramps_id && !hasName(p)
   const lines = [
+    {
+      show: p => unknownName && isUnnamedPerson(p),
+      text: () => unknownName,
+      weight: 500,
+      row: 0,
+    },
     {
       show: hasName,
       text: p =>
         surnameFirst ? `${p.name_surname || '…'},` : p.name_given || '…',
       weight: 500,
+      row: 0,
     },
     {
       show: hasName,
       text: p => (surnameFirst ? p.name_given || '…' : p.name_surname || '…'),
       weight: 500,
+      row: 1,
     },
-    {show: p => p?.birth?.date, text: p => `*${p.birth.date}`, weight: 350},
-    {show: p => p?.death?.date, text: p => `†${p.death.date}`, weight: 350},
+    {
+      show: p => p?.birth?.date,
+      text: p => `*${p.birth.date}`,
+      weight: 350,
+      row: 2,
+    },
+    {
+      show: p => p?.death?.date,
+      text: p => `†${p.death.date}`,
+      weight: 350,
+      row: 3,
+    },
   ]
-  lines.forEach((line, i) => {
+  lines.forEach(line => {
     nodes
       .filter(d => line.show(profile(d)))
       .append('text')
       .attr('x', d => left + textPadding(d))
-      .attr('y', top + 25 + 17 * i)
+      .attr('y', top + 25 + 17 * line.row)
       .attr('text-anchor', 'start')
       .attr('font-weight', line.weight)
       .attr('fill', palette.text)
@@ -236,6 +256,7 @@ export function drawChangedCards(
     boxWidth,
     boxHeight,
     showImagePlaceholder = false,
+    unknownName = '',
   }
 ) {
   const changed = new Set()
@@ -246,6 +267,7 @@ export function drawChangedCards(
       nameDisplayFormat,
       palette,
       showImagePlaceholder,
+      unknownName,
     }
     const previous = cardInputs.get(this)
     cardInputs.set(this, inputs)
@@ -268,6 +290,7 @@ export function drawChangedCards(
     boxWidth,
     boxHeight,
     showImagePlaceholder,
+    unknownName,
     nameDisplayFormat,
     palette,
   })

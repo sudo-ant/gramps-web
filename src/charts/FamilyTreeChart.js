@@ -1,5 +1,6 @@
-import {curveBumpY, link} from 'd3-shape'
+import {mdiFamilyTree} from '@mdi/js'
 import {ChartCanvas, place} from './ChartCanvas.js'
+import {translate} from './animatedJoin.js'
 import {familyTreeLayoutDefaults} from './layout/familyTreeLayout.js'
 
 const {boxWidth, boxHeight, sexStripExtent} = familyTreeLayoutDefaults
@@ -40,12 +41,14 @@ const routePath = (routes, relationship) =>
   routes
     .map(route =>
       route
-        .map(
-          (point, index) =>
-            `${index === 0 ? 'M' : 'L'}${point.x - relationship.x},${
-              point.y - relationship.y
-            }`
-        )
+        .map((point, index) => {
+          const x = point.x - relationship.x
+          const y = point.y - relationship.y
+          if (index === 0) {
+            return `M${x},${y}`
+          }
+          return point.x === route[index - 1].x ? `V${y}` : `H${x}`
+        })
         .join('')
     )
     .join('')
@@ -135,37 +138,59 @@ export class FamilyTreeChart extends ChartCanvas {
   }
 
   linkEnds(treeLink) {
-    return [place(treeLink.relationship), place(treeLink.target)]
+    return [place(treeLink.points[0]), place(treeLink.points.at(-1))]
   }
 
-  linkPath([source, target]) {
-    const inset = boxHeight / 2 - 10
-    const direction = Math.sign(target[1] - source[1])
-
-    return link(curveBumpY)({
-      source,
-      target: [target[0], target[1] - direction * inset],
-    })
+  linkPath([source, target], treeLink) {
+    if (source[0] === target[0]) {
+      return `M${source[0]},${source[1]}V${target[1]}`
+    }
+    const points = treeLink.points
+    const first = points[0]
+    const last = points.at(-1)
+    const busRatio = (points[1].y - first.y) / (last.y - first.y)
+    const busY = source[1] + busRatio * (target[1] - source[1])
+    return `M${source[0]},${source[1]}V${busY}H${target[0]}V${target[1]}`
   }
 
   styleLinks(links, palette) {
     this._links.attr('stroke-opacity', 0.4)
 
-    links.attr('stroke', palette.link)
+    links
+      .attr('stroke', palette.link)
+      .classed('descendant-connector', true)
+      .classed(
+        'primary-family-descendant',
+        link => link.relationship.ancestry || link.relationship.coupleLane === 0
+      )
+      .classed(
+        'subsequent-family-descendant',
+        link => !link.relationship.ancestry && link.relationship.coupleLane > 0
+      )
   }
 
   drawExtras(nodes, {palette}) {
     const relationships = nodes.filter(node => node.isRelationship)
+    const people = nodes.filter(node => !node.isRelationship)
+    const relationshipData = relationships.nodes().map(node => node.__data__)
+    const partnershipGroups = this._links
+      .selectAll('g.partnership-relationship')
+      .data(relationshipData, node => node.key)
+      .join('g')
+      .attr('class', 'partnership-relationship')
+      .classed('primary-partnership', node => node.coupleLane === 0)
+      .classed('secondary-partnership', node => node.coupleLane > 0)
+      .attr('transform', node => translate([node.x, node.y]))
 
-    relationships
+    partnershipGroups
       .selectAll('circle.relationship-junction')
-      .data(node => [node])
+      .data(node => (node.partner ? [node] : []))
       .join('circle')
       .attr('class', 'relationship-junction')
       .attr('r', 3)
       .attr('fill', palette.link)
 
-    relationships
+    partnershipGroups
       .selectAll('line.relationship-couple')
       .data(node => {
         if (!node.person || !node.partner || node.coupleRoute.length) {
@@ -187,7 +212,7 @@ export class FamilyTreeChart extends ChartCanvas {
         ]
       })
       .join('line')
-      .attr('class', 'relationship-couple')
+      .attr('class', 'relationship-couple partnership-connector')
       .attr('x1', item => item.x1)
       .attr('x2', item => item.x2)
       .attr('y1', 0)
@@ -195,14 +220,76 @@ export class FamilyTreeChart extends ChartCanvas {
       .attr('stroke', palette.link)
       .attr('stroke-opacity', 0.4)
 
-    relationships
+    const drawContinuation = (className, directionName, direction) => {
+      const marker = people
+        .selectAll(`g.${className}`)
+        .data(
+          node =>
+            node.continuations?.filter(
+              continuation => continuation.direction === directionName
+            ) ?? [],
+          continuation => continuation.key
+        )
+        .join('g')
+        .attr('class', `family-tree-continuation ${className}`)
+        .attr('transform', `translate(0,${direction * (boxHeight / 2)})`)
+        .attr('data-person-handle', continuation => continuation.personHandle)
+        .attr('data-direction', continuation => continuation.direction)
+        .attr('data-family-handles', continuation =>
+          continuation.familyHandles.join(',')
+        )
+        .attr('aria-hidden', 'true')
+        .attr('pointer-events', 'none')
+
+      marker
+        .selectAll('line.family-tree-continuation-stem')
+        .data(continuation => [continuation])
+        .join('line')
+        .attr('class', 'family-tree-continuation-stem')
+        .attr('x1', 0)
+        .attr('x2', 0)
+        .attr('y1', 0)
+        .attr('y2', direction * 8)
+        .attr('stroke', palette.link)
+        .attr('stroke-width', 2)
+        .attr('stroke-linecap', 'round')
+
+      marker
+        .selectAll('path.family-tree-continuation-icon')
+        .data(continuation => [continuation])
+        .join('path')
+        .attr('class', 'family-tree-continuation-icon')
+        .attr('d', mdiFamilyTree)
+        .attr(
+          'transform',
+          direction < 0
+            ? 'translate(-9,-26) scale(0.75) rotate(180 12 12)'
+            : 'translate(-9,8) scale(0.75)'
+        )
+        .attr('fill', palette.link)
+        .attr('fill-opacity', 0.8)
+    }
+
+    drawContinuation('family-tree-continuation-ancestors', 'ancestors', -1)
+    drawContinuation('family-tree-continuation-descendants', 'descendants', 1)
+
+    partnershipGroups
       .selectAll('path.relationship-couple-route')
       .data(node => (node.coupleRoute.length ? [node] : []))
       .join('path')
-      .attr('class', 'relationship-couple relationship-couple-route')
+      .attr(
+        'class',
+        'relationship-couple relationship-couple-route partnership-connector'
+      )
       .attr('d', node => routePath(node.coupleRoute, node))
       .attr('fill', 'none')
       .attr('stroke', palette.link)
       .attr('stroke-opacity', 0.4)
+
+    relationships
+      .selectAll(
+        '.relationship-junction, .relationship-couple, .relationship-couple-route'
+      )
+      .remove()
   }
 }

@@ -14,11 +14,24 @@ const family = (handle, father, mother, children) => ({
   child_ref_list: children.map(childRef),
 })
 
-const person = (handle, {parentFamily = {}, families = []} = {}) => ({
+const person = (
+  handle,
+  {parentFamily = {}, parentFamilies = [], families = []} = {}
+) => ({
   handle,
   gramps_id: `I_${handle}`,
-  profile: {gramps_id: `I_${handle}`, sex: 'U'},
-  extended: {primary_parent_family: parentFamily, families},
+  profile: {
+    gramps_id: `I_${handle}`,
+    name_display: handle,
+    name_given: handle,
+    name_surname: '',
+    sex: 'U',
+  },
+  extended: {
+    primary_parent_family: parentFamily,
+    parent_families: parentFamilies,
+    families,
+  },
 })
 
 describe('getFamilyTree', () => {
@@ -139,6 +152,34 @@ describe('getFamilyTree', () => {
     expect(tree.families[0].children[0].person).toBeUndefined()
   })
 
+  it('never turns biological or adoptive parent families into partnerships', () => {
+    const biological = family('FB', 'BF', 'FL', ['K'])
+    const adoptive = family('FA', 'CH', 'FW', ['K'])
+    const graph = new FamilyGraph([
+      person('FL', {families: [biological]}),
+      person('K', {
+        parentFamily: biological,
+        parentFamilies: [biological, adoptive],
+        // Defend against a malformed or over-extended family list.
+        families: [adoptive],
+      }),
+      person('BF'),
+      person('CH'),
+      person('FW'),
+    ])
+
+    const florenceTree = getFamilyTree(graph, 'FL', 1)
+    const kennethTree = getFamilyTree(graph, 'K', 1)
+
+    expect(florenceTree.families).toHaveLength(1)
+    expect(florenceTree.families[0].partnerHandle).toBe('BF')
+    expect(
+      florenceTree.families[0].children.map(child => child.handle)
+    ).toEqual(['K'])
+    expect(kennethTree.families).toEqual([])
+    expect(kennethTree.hasHiddenParents).toBe(true)
+  })
+
   it('marks known parent families as hidden ancestry', () => {
     const fParents = family('fParents', 'F', 'M', ['R'])
 
@@ -178,6 +219,7 @@ describe('getFamilyTree', () => {
 
     expect(tree.hasHiddenFamilies).toBe(false)
     expect(child.hasHiddenFamilies).toBe(true)
+    expect(child.hiddenDescendantFamilyHandles).toEqual(['f2'])
   })
 })
 
@@ -221,6 +263,37 @@ describe('getPrimaryAncestry', () => {
     expect(father.handle).toBe('F')
     expect(father.parentFamily).toBeUndefined()
     expect(father.hasHiddenPrimaryParents).toBe(true)
+    expect(father.hiddenAncestorFamilyHandles).toEqual(['FGP'])
+  })
+
+  it("keeps Philip Anthony Levi's explicit Unknown mother resolved", () => {
+    const parents = family('F500040', '', 'BLANK', ['PHILIP'])
+    const blankMother = {
+      handle: 'BLANK',
+      gramps_id: 'I500159',
+      profile: {
+        gramps_id: 'I500159',
+        name_display: '',
+        name_given: '',
+        name_surname: '',
+        birth: {},
+        death: {date: ''},
+        sex: 'F',
+      },
+      extended: {families: [parents]},
+    }
+    const graph = new FamilyGraph([
+      person('PHILIP', {parentFamily: parents}),
+      blankMother,
+    ])
+
+    const result = getPrimaryAncestry(graph, 'PHILIP', 1)
+
+    expect(result.parentFamily.family.handle).toBe('F500040')
+    expect(result.parentFamily.father).toBeUndefined()
+    expect(result.parentFamily.mother.handle).toBe('BLANK')
+    expect(result.parentFamily.mother.person).toBe(blankMother)
+    expect(result.parentFamily.mother.person.profile.sex).toBe('F')
   })
 
   it('records additional parent families without expanding them', () => {
@@ -264,8 +337,8 @@ describe('getPrimaryAncestry', () => {
 
   it("keeps an ancestor's additional partnerships without expanding them", () => {
     const primary = family('FGV', 'G', 'H', ['V'])
-    const firstSide = family('FG1', 'G', 'P1', ['S1'])
-    const secondSide = family('FG2', 'G', 'P2', ['S2'])
+    const firstSide = family('FG1', 'G', 'P1', [])
+    const secondSide = family('FG2', 'G', 'P2', [])
     const partnerParents = family('FPP', 'PF', 'PM', ['P1'])
     const graph = new FamilyGraph([
       person('V', {parentFamily: primary}),
@@ -273,8 +346,6 @@ describe('getPrimaryAncestry', () => {
       person('H', {families: [primary]}),
       person('P1', {parentFamily: partnerParents, families: [firstSide]}),
       person('P2', {families: [secondSide]}),
-      person('S1', {parentFamily: firstSide}),
-      person('S2', {parentFamily: secondSide}),
       person('PF'),
       person('PM'),
     ])
