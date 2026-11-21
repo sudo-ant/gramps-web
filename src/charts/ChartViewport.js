@@ -27,7 +27,8 @@ const normalizeInsets = (insets = {}) => ({
 // person at the origin. The viewBox is as large as the container, so one
 // viewBox unit is one screen pixel.
 export class ChartViewport {
-  constructor(svg, content) {
+  constructor(svg, content, {centreRootOnChange = false} = {}) {
+    this._centreRootOnChange = centreRootOnChange
     this._svg = svg
     this._zoom = zoom().on('zoom', event =>
       content.attr('transform', event.transform)
@@ -55,6 +56,8 @@ export class ChartViewport {
   // Otherwise the chart starts at the default position with the current zoom
   // level or, with `fit`, zoomed out as far as needed to show all of it. A
   // layout shown before the view has a size does not count as shown.
+  // With `centreRootOnChange`, a new root is instead centred in the usable
+  // viewport at the current zoom, ignoring candidate positions and `fit`.
   //
   // Each candidate has the `key` of a node of the new root person in
   // `positions`, the current node positions by key, and the `position` that
@@ -218,6 +221,17 @@ export class ChartViewport {
     const clickedKey =
       this._clicked?.handle === rootHandle ? this._clicked.key : undefined
     this._clicked = undefined
+    if (this._centreRootOnChange) {
+      const {left, right, top, bottom} = this._insets
+      return {
+        transform: zoomIdentity
+          .translate(
+            this._viewStart[0] + (size[0] + left - right) / 2,
+            this._viewStart[1] + (size[1] + top - bottom) / 2
+          )
+          .scale(transform.k),
+      }
+    }
     const ordered = [
       ...candidates.filter(candidate => candidate.key === clickedKey),
       ...candidates.filter(candidate => candidate.key !== clickedKey),

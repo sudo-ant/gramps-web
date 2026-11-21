@@ -31,10 +31,10 @@ const size = [800, 600]
 const small = {xMin: -100, xMax: 100, yMin: -50, yMax: 50}
 const large = {xMin: -2000, xMax: 500, yMin: -300, yMax: 1500}
 
-function viewport() {
+function viewport(options) {
   const svg = create('svg')
   const content = svg.append('g')
-  return {svg, viewport: new ChartViewport(svg, content)}
+  return {svg, viewport: new ChartViewport(svg, content, options)}
 }
 
 // Position of a layout point relative to the top left corner of the view
@@ -54,6 +54,22 @@ const expectClose = (actual, expected) =>
   actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i]))
 
 describe('ChartViewport', () => {
+  it('defers opted-in centring until a changed root has a usable size', () => {
+    const {svg, viewport: view} = viewport({centreRootOnChange: true})
+    view.show({bounds: large, size, rootHandle: 'I0137'})
+    view.zoomBy(0.5)
+    view.panBy(90, -70)
+    view.show({bounds: small, size: [0, 0], rootHandle: 'I0141'})
+    view.show({
+      bounds: small,
+      size,
+      rootHandle: 'I0141',
+      insets: {left: 100, right: 20, top: 120, bottom: 40},
+    })
+    expectClose(viewPosition(svg, [0, 0]), [440, 340])
+    expect(zoomTransform(svg.node()).k).toBeCloseTo(0.5)
+  })
+
   it('keeps the zoom transform when the same layout is shown again', () => {
     const {svg, viewport: view} = viewport()
     view.show({bounds: small, size, rootHandle: 'R'})

@@ -110,6 +110,29 @@ describe('GrampsjsFamilyTreeChart', () => {
     expect(element._layout).toBe(layout)
   })
 
+  it('draws the selected focal layout when asynchronous data arrives', () => {
+    const element = new GrampsjsFamilyTreeChart()
+    const gunter = {nodes: [{handle: 'gunter'}]}
+    const vera = {nodes: [{handle: 'vera'}]}
+    element._layout = gunter
+    element._graph = {personByGrampsId: vi.fn(() => undefined)}
+    element.grampsId = 'I0141'
+    element.willUpdate(changed('grampsId'))
+    element.updated()
+    expect(mocks.update).toHaveBeenLastCalledWith(gunter, expect.any(Object))
+
+    element.data = [{handle: 'vera', gramps_id: 'I0141'}]
+    mocks.layoutFamilyTree.mockReturnValue(vera)
+    element.willUpdate(changed('data'))
+    element.updated()
+    expect(mocks.layoutFamilyTree).toHaveBeenLastCalledWith(
+      element._graph,
+      'vera',
+      {ancestorDepth: 4, descendantDepth: 1}
+    )
+    expect(mocks.update).toHaveBeenLastCalledWith(vera, expect.any(Object))
+  })
+
   it('clears the layout and renderer when new data confirms no person', () => {
     const element = new GrampsjsFamilyTreeChart()
     element._layout = {nodes: [{handle: 'old'}]}

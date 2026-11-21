@@ -42,12 +42,12 @@ export const place = node => [node.x, node.y]
 //   links to draw, `isPerson(node)`, and `drawExtras(nodes, options)`: whatever
 //   else the nodes show.
 export class ChartCanvas {
-  constructor() {
+  constructor(viewportOptions = {}) {
     this._svg = create('svg')
       .attr('font-family', 'Inter var')
       .attr('font-size', 13)
     const content = this._svg.append('g').attr('id', 'chart-content')
-    this._viewport = new ChartViewport(this._svg, content)
+    this._viewport = new ChartViewport(this._svg, content, viewportOptions)
     this._links = content
       .append('g')
       .attr('fill', 'none')

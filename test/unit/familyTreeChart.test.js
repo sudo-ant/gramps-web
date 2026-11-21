@@ -588,7 +588,7 @@ describe('FamilyTreeChart', () => {
     expect(personNode(chart, 'R')).toBeUndefined()
   })
 
-  it('keeps a clicked new focal person at the same screen position and zoom', () => {
+  it('centres a clicked new focal person while preserving zoom', () => {
     const childFamily = family('FC', 'C', 'CP', ['GC'])
     const recenterGraph = new FamilyGraph([
       person('R', {families: [focalFamily]}),
@@ -607,7 +607,6 @@ describe('FamilyTreeChart', () => {
     )
     setZoom(chart, zoomIdentity.translate(45, 25).scale(1.75))
     const child = personNode(chart, 'C')
-    const before = viewPosition(chart, 'C')
     child.dispatchEvent(new MouseEvent('click', {bubbles: true}))
 
     chart.update(
@@ -619,10 +618,52 @@ describe('FamilyTreeChart', () => {
     )
 
     expect(personNode(chart, 'C')).toBe(child)
-    expectClose(viewPosition(chart, 'C'), before)
+    expectClose(viewPosition(chart, 'C'), [400, 300])
     expect(zoomTransform(chart.node).k).toBeCloseTo(1.75)
     expect(personNode(chart, 'CP')).not.toBeUndefined()
     expect(personNode(chart, 'GC')).not.toBeUndefined()
     expect(personNode(chart, 'R')).toBeUndefined()
+  })
+
+  it('centres Gunter (I0137) to Vera (I0141), then another person', () => {
+    // Synthetic family: the regression concerns viewport identity, not the
+    // private genealogy of the reported people.
+    const parents = family('FG', 'I0137', 'FLORENCE', ['I0141'])
+    const descendants = family('FV', '', 'I0141', ['CHILD'])
+    const people = new FamilyGraph([
+      person('I0137', {families: [parents]}),
+      person('FLORENCE', {families: [parents]}),
+      person('I0141', {parentFamily: parents, families: [descendants]}),
+      person('CHILD', {parentFamily: descendants}),
+    ])
+    const chart = new FamilyTreeChart()
+    const layoutFor = handle =>
+      layoutFamilyTree(people, handle, {
+        ancestorDepth: 1,
+        descendantDepth: 1,
+      })
+    chart.update(layoutFor('I0137'), size)
+    chart.viewport.zoomBy(0.75)
+    chart.viewport.panBy(40, -25)
+    expect(viewPosition(chart, 'I0141')).not.toEqual([400, 300])
+
+    for (const handle of ['I0141', 'CHILD']) {
+      chart.update(layoutFor(handle), size)
+      expectClose(viewPosition(chart, handle), [400, 300])
+      expect(zoomTransform(chart.node).k).toBeCloseTo(0.75)
+      chart.viewport.panBy(-70, 45)
+    }
+
+    const before = viewPosition(chart, 'CHILD')
+    // Reselecting the same person and refetching data produce new layouts.
+    const layout = layoutFor('CHILD')
+    chart.update(layout, size)
+    expectClose(viewPosition(chart, 'CHILD'), before)
+    const transform = zoomTransform(chart.node)
+    chart.update(layout, {...size, nameDisplayFormat: 1, getImageUrl: () => ''})
+    expect(zoomTransform(chart.node)).toBe(transform)
+    chart.update(layout, {...size, bboxWidth: 1000})
+    expect(zoomTransform(chart.node)).toBe(transform)
+    expectClose(viewPosition(chart, 'CHILD'), [before[0] + 100, before[1]])
   })
 })

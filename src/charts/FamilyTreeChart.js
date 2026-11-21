@@ -55,7 +55,7 @@ const routePath = (routes, relationship) =>
 
 export class FamilyTreeChart extends ChartCanvas {
   constructor() {
-    super()
+    super({centreRootOnChange: true})
     this._keys = new Map()
     this._root = undefined
     this._relationshipNodes = new Map()
