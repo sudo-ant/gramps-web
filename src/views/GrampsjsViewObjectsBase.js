@@ -3,7 +3,7 @@ Base view for lists of Gramps objects, e.g. people, events, ...
 */
 
 import {html, css} from 'lit'
-import {mdiPlus, mdiCog, mdiCheckboxMultipleOutline} from '@mdi/js'
+import {mdiPlus, mdiCog, mdiCheckboxMultipleOutline, mdiMagnify} from '@mdi/js'
 
 import '@material/web/fab/fab.js'
 import '@material/web/iconbutton/icon-button.js'
@@ -223,6 +223,17 @@ export class GrampsjsViewObjectsBase extends GrampsjsStaleDataMixin(
         .definitions="${this.filterDefinitions}"
         ?errorGql="${this.error}"
       >
+        <md-outlined-button
+          slot="leading"
+          @click="${() => fireEvent(this, 'nav', {path: 'search'})}"
+        >
+          <grampsjs-icon
+            slot="icon"
+            path="${mdiMagnify}"
+            color="var(--mdc-theme-secondary)"
+          ></grampsjs-icon>
+          ${this._('Search')}
+        </md-outlined-button>
         ${this.appState.permissions.canEdit
           ? this._selectionMode
             ? html`<md-filled-button
