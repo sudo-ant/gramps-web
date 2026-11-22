@@ -2,6 +2,22 @@
 
 Verified 2026-11-22. Snapshot only; recheck Git before continuing.
 
+## Latest task: simplified family navigation
+
+- Base verified clean: `feature/family-tree` at expected `eb67e38738d20b620162d5e2dc4b6820d71e6f92`. New branch: `codex/family-navigation`.
+- Navigation implementation and regression tests reviewed and approved. User authorized committing only the four intended files on this branch; implementation remains unchanged. Do not merge, push or deploy. Obtain the final commit SHA with `git log -1 --format=%H`.
+- `src/components/GrampsjsMainMenu.js`: primary drawer links are Home, Family Tree (`/tree`, the existing custom chart), People, Families, Places and Media. Identical structure for viewers/editors.
+- Native details/summary disclosure labelled More tools contains direct Events, Sources, Citations, Repositories and Notes links plus every other former drawer destination: Blog, Timeline, Map, DNA, Assistant, History, Bookmarks, Tasks, Reports, Export, Revisions and Notifications. Existing DNA configuration, Assistant capability/server checks, Revisions private-data permission and notification badge remain intact.
+- More tools starts collapsed on primary routes and opens for secondary routes/deep links. Native disclosure supplies pointer/keyboard interaction, expanded state and hiding of collapsed links; default marker and focus indicator retained. Existing Material link items and hrefs are reused within labelled navigation landmarks. Existing responsive drawer and list tabs are unchanged.
+- Administrative functions remain in the unchanged account/settings menu with its existing permission checks. Global search, Enter correction, editing controls, routes, authentication and custom chart implementation are unchanged. No backend, API implementation, database, Docker, media or dependency changes.
+- `lang/en.json`: two new frontend labels, Primary navigation and More tools. `test/unit/mainMenu.test.js`: 28 DOM tests for six primary links, all secondary links, route selection/disclosure, permission/configuration checks, translations and notifications. Material list/menu containers are stubbed because happy-dom lacks ElementInternals; no browser behavior is simulated by these stubs.
+- Validation: focused navigation tests 28 passed; complete Vitest suite with V8 coverage 42 files, 933 tests passed (includes search and routing regressions). Clean production build, standalone typecheck, changed-file ESLint, JS/JSON Prettier, JSON parsing and whitespace checks passed. Existing Material sourcemap and Rollup circular-dependency/MapLibre warnings remain. Checks used installed tools directly via Node because npm/npx are unavailable.
+- Commit finalisation: scope confirmed as exactly the four intended files. Full suite rerun: 42 files, 933 tests passed; clean production build, typecheck, changed-file ESLint/Prettier and whitespace checks passed again. No implementation or test changes made during finalisation.
+- No live desktop/mobile browser or assistive-technology verification performed. The native disclosure follows MDN guidance; Modern Web Guidance runner remains unavailable (no npm/npx). No dependencies or tools installed.
+- Recommended next phase, if desired: verify desktop/mobile drawer scrolling, disclosure Tab/Enter/Space activation, route transitions and administration in a new chat. Implementation review is complete; do not create a chat automatically.
+
+## Earlier search task history (superseded working-state instructions)
+
 ## Current task: list search discoverability
 
 ### Enter-key correction after live testing
