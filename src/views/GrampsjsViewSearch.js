@@ -274,7 +274,9 @@ export class GrampsjsViewSearch extends GrampsjsView {
   }
 
   _handleSearchKey(event) {
-    if (event.code === 'Enter') {
+    if (event.key === 'Enter') {
+      if (event.isComposing || event.repeat) return
+      event.preventDefault()
       this._executeSearch()
     }
     if (event.code === 'Escape') {

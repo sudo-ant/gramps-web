@@ -4,6 +4,15 @@ Verified 2026-11-22. Snapshot only; recheck Git before continuing.
 
 ## Current task: list search discoverability
 
+### Enter-key correction after live testing
+
+- User confirmed the list Search entry works and global search for I0933 returns Kenneth Charles Harris. Search categories allow multiple selections; preserve this behavior.
+- On top of `503d740a`, user authorized a separate correction commit on the same branch, with no merge, push or deployment.
+- `src/views/GrampsjsViewSearch.js`: Enter now checks logical `event.key` instead of physical `event.code`, prevents default submission and ignores held-key repeats and IME composition. Still calls the same `_executeSearch()` as the icon; category selection, API, results and navigation are unchanged.
+- The prior physical-code comparison misses keypad Enter (`NumpadEnter`) and events without a physical code. The exact failing Opera event was not captured; live Opera confirmation remains necessary.
+- `test/unit/searchKeyboard.test.js`: eight DOM regressions exercise rendered keyboard/click bindings, shadow-event bubbling, one request per activation, current query and multiple categories for modern/legacy search, empty queries, repeats and composition. Material text field is stubbed because happy-dom lacks its ElementInternals; tests do not substitute for live browser testing.
+- Focused search/list checks: 22 tests passed. Full Vitest suite with V8 coverage: 41 files, 905 tests passed. Clean production build, standalone type check, changed-file ESLint/Prettier and whitespace checks passed. Existing dependency warnings remain. No backend, API implementation, database or Docker changes.
+
 - Branch: `codex/list-search-entry`, created from clean `feature/family-tree` at `ecb1c95967c5ada1207a4bdd44f97dd35443ad8f`. Required base commit verified as an ancestor (also base HEAD).
 - Implementation and test review approved by the user. Finalisation authorizes committing only this handoff, the list base and its search tests on this branch. Do not push, merge or deploy. Obtain the final commit SHA with `git log -1 --format=%H`.
 - `src/views/GrampsjsViewObjectsBase.js`: added a translated, labelled Material outlined Search button in the filter toolbar's existing leading slot. Uses the existing `nav` event with `{path: 'search'}`, exactly like the header shortcut. Existing global search view, API, results, focus handling and record navigation are unchanged.
