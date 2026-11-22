@@ -428,20 +428,45 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
     if ('data' in result) {
       let data = result.data
-      const completionUrl = definition.completionUrl?.(
+      // A newly fetched upbringing parent can reveal another ancestor inside
+      // the depth limit. Complete that boundary too, without retrying handles
+      // the API omitted (e.g. private or unavailable people).
+      const attemptedHandles = new Set()
+      let completionUrl = definition.completionUrl?.(
         data,
         grampsId,
         values,
         lang
       )
-      if (completionUrl) {
-        const completion = await this.appState.apiGet(completionUrl)
+      while (completionUrl) {
+        const handles = new URL(
+          completionUrl,
+          window.location.origin
+        ).searchParams
+          .get('handles')
+          .split(',')
+          .filter(handle => !attemptedHandles.has(handle))
+        if (!handles.length) {
+          break
+        }
+        handles.forEach(handle => attemptedHandles.add(handle))
+        const completion = await this.appState.apiGet(
+          completionUrl.replace(
+            /([?&]handles=)[^&]*/,
+            (_, prefix) =>
+              prefix +
+              handles.map(handle => encodeURIComponent(handle)).join(',')
+          )
+        )
         if (!this._isCurrentDataRequest(request, url, definition)) {
           return
         }
         if ('data' in completion) {
           data = mergePeopleByHandle(data, completion.data)
+        } else {
+          break
         }
+        completionUrl = definition.completionUrl?.(data, grampsId, values, lang)
       }
       this.loading = false
       this.error = false

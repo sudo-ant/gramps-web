@@ -7,6 +7,15 @@ import {GrampsjsChartBase} from './GrampsjsChartBase.js'
 
 const layoutProperties = ['data', 'grampsId', 'nAnc', 'nDesc']
 
+const personName = person =>
+  person?.profile?.name_display ||
+  [person?.profile?.name_given, person?.profile?.name_surname]
+    .filter(Boolean)
+    .join(' ') ||
+  person?.gramps_id ||
+  person?.handle ||
+  ''
+
 export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
   static get properties() {
     return {
@@ -73,6 +82,16 @@ export class GrampsjsFamilyTreeChart extends GrampsjsChartBase {
       getImageUrl: d => getImageUrl(d.person ?? {}, 100),
       showImagePlaceholder: true,
       unknownName: this._('Unknown'),
+      relationshipTypeLabel: type => this._(type),
+      relationshipLabel: link =>
+        `${personName(link.target.person)}: ${link.parents
+          .map(
+            ({handle, role, type}) =>
+              `${this._(role === 'father' ? 'Father' : 'Mother')} ${personName(
+                this._graph.person(handle)
+              )}: ${this._(type)}`
+          )
+          .join(' / ')}`,
       bboxWidth: this.containerWidth,
       bboxHeight: this.containerHeight,
       nameDisplayFormat: this.nameDisplayFormat,

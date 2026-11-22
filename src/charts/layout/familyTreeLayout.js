@@ -191,6 +191,39 @@ const partnerDirection = (person, partner, fallback = 1) => {
   return fallback
 }
 
+// Share a couple connector only when both recorded parent relationships have
+// the same type. Otherwise route independently from the actual parent card.
+const parentLinks = (relationship, target, relations, key) => {
+  const visible = relations.filter(relation =>
+    [relationship.person, relationship.partner].some(
+      node => node?.handle === relation.handle
+    )
+  )
+  const joint = visible.length === 2 && visible[0].type === visible[1].type
+  const groups = joint ? [visible] : visible.map(relation => [relation])
+  return groups.map(parents => {
+    const directParent =
+      !joint && relationship.partner
+        ? [relationship.person, relationship.partner].find(
+            node => node.handle === parents[0].handle
+          )
+        : undefined
+    return {
+      key: groups.length > 1 ? `${key}:${parents[0].role}` : key,
+      source:
+        directParent ??
+        (!relationship.ancestry && relationship.coupleLane > 0
+          ? relationship.partner ?? relationship
+          : relationship),
+      directParent,
+      target,
+      relationship,
+      parents,
+      relationshipType: parents[0].type,
+    }
+  })
+}
+
 const familyDirection = (family, sharedHandle) =>
   family.father_handle === sharedHandle
     ? 1
@@ -347,12 +380,14 @@ const measureDescendants = (data, settings, includeUnresolved) => {
         if (!target) {
           return
         }
-        links.push({
-          key: `${family.key}:child:${child.key}`,
-          source: coupleLane === 0 ? relationship : partner ?? relationship,
-          target,
-          relationship,
-        })
+        links.push(
+          ...parentLinks(
+            relationship,
+            target,
+            child.parentRelationships,
+            `${family.key}:child:${child.key}`
+          )
+        )
       })
     }
   })
@@ -418,6 +453,42 @@ const ancestryPerson = (
   includeUnresolved = false,
   expandedFamilies = new Set()
 ) => {
+  if (data?.parentFamilies?.length > 1) {
+    const branches = data.parentFamilies.map(parentFamily => {
+      const branch = ancestryPerson(
+        {...data, parentFamily, parentFamilies: [], sideFamilies: []},
+        root,
+        settings,
+        0,
+        includeUnresolved,
+        expandedFamilies
+      )
+      // Each family shares this child card. Pack only its ancestor cards;
+      // translating the shared root would duplicate or move the focal person.
+      branch.nodes = branch.nodes.filter(node => node !== root)
+      branch.contours.delete(0)
+      return branch
+    })
+    // Unavailable parents can leave only the shared root, removed above.
+    // Empty branches have no contours and cannot seed the packing offsets.
+    const ancestors = packBlocks(
+      branches.filter(branch => branch.nodes.length),
+      settings.familyGap
+    )
+    ancestors.nodes.unshift(root)
+    mergeInterval(ancestors.contours, 0, cardInterval(0, settings))
+    if (sideDirection && data.sideFamilies.length) {
+      addAncestorSidePartnerships(
+        ancestors,
+        data,
+        root,
+        sideDirection,
+        settings,
+        includeUnresolved
+      )
+    }
+    return ancestors
+  }
   const contours = new Map([[0, cardInterval(0, settings)]])
   const block = {nodes: [root], relationships: [], links: [], contours}
   if (sideDirection && data?.sideFamilies?.length) {
@@ -437,7 +508,13 @@ const ancestryPerson = (
   const {parentFamily} = data
   const familyHandle = parentFamily.family.handle
 
-  if (expandedFamilies.has(familyHandle)) {
+  // Birth and upbringing uses of the same family are distinct connections.
+  // Equal-type shared ancestry still collapses exactly as before.
+  const expansionKey = JSON.stringify([
+    familyHandle,
+    parentFamily.parentRelationships.map(({role, type}) => [role, type]),
+  ])
+  if (expandedFamilies.has(expansionKey)) {
     root.hasHiddenAncestors = true
 
     const existingContinuation = root.continuations.find(
@@ -460,7 +537,7 @@ const ancestryPerson = (
     return block
   }
 
-  expandedFamilies.add(familyHandle)
+  expandedFamilies.add(expansionKey)
 
   const makeParent = (parentData, role) => {
     if (!parentData || (!parentData.person && !includeUnresolved)) {
@@ -470,7 +547,7 @@ const ancestryPerson = (
       parentData,
       0,
       0,
-      `${parentFamily.family.handle}:${role}:${parentData.handle}`
+      `${parentFamily.family.handle}:${role}:${parentData.handle}:${parentData.key}`
     )
     parent.ancestry = true
     return ancestryPerson(
@@ -511,7 +588,7 @@ const ancestryPerson = (
   const father = fatherBlock?.nodes[0]
   const mother = motherBlock?.nodes[0]
   const relationship = {
-    key: `${parentFamily.family.handle}:ancestry`,
+    key: `${parentFamily.family.handle}:ancestry:${data.key}`,
     family: parentFamily.family,
     person: father ?? mother,
     partner: father && mother ? mother : undefined,
@@ -524,12 +601,14 @@ const ancestryPerson = (
     coupleRoute: [],
   }
   block.relationships.push(relationship)
-  block.links.push({
-    key: `${parentFamily.family.handle}:child:${root.handle}:ancestry`,
-    source: relationship,
-    target: root,
-    relationship,
-  })
+  block.links.push(
+    ...parentLinks(
+      relationship,
+      root,
+      parentFamily.parentRelationships,
+      `${relationship.key}:child:${root.key}`
+    )
+  )
   parentBlocks.forEach(parentBlock => {
     block.nodes.push(...parentBlock.nodes)
     block.relationships.push(...parentBlock.relationships)
@@ -651,21 +730,86 @@ const compactPoints = points =>
   )
 
 const setLinkRoutes = (layout, settings) => {
-  const {boxHeight} = settings
+  const {boxWidth, boxHeight, sexStripExtent} = settings
+  // Allocate ports across all incoming families, not just the two parents
+  // within one family. Solid Birth and dashed upbringing connections must
+  // remain distinguishable right up to their shared child card.
+  const incoming = new Map()
+  layout.links.forEach(link => {
+    const links = incoming.get(link.target) ?? []
+    links.push(link)
+    incoming.set(link.target, links)
+  })
+  incoming.forEach(links => {
+    const spacing = Math.min(
+      16,
+      (boxWidth - 24) / Math.max(1, links.length - 1)
+    )
+    links.forEach((link, index) => {
+      link.targetOffset = (index - (links.length - 1) / 2) * spacing
+    })
+  })
+  const labelledTargets = new Set(
+    layout.links
+      .filter(link => link.relationshipType !== 'Birth')
+      .map(link => link.target)
+  )
   const byRelationship = new Map()
   layout.links.forEach(treeLink => {
-    const links = byRelationship.get(treeLink.relationship) ?? []
+    const routeKey = JSON.stringify([
+      treeLink.relationship.key,
+      treeLink.directParent?.handle ?? '',
+      treeLink.relationshipType,
+    ])
+    treeLink.routeKey = routeKey
+    const links = byRelationship.get(routeKey) ?? []
     links.push(treeLink)
-    byRelationship.set(treeLink.relationship, links)
+    byRelationship.set(routeKey, links)
+  })
+  const routeGroups = new Map()
+  byRelationship.forEach(links => {
+    const groups = routeGroups.get(links[0].relationship) ?? []
+    groups.push(links)
+    routeGroups.set(links[0].relationship, groups)
   })
   byRelationship.forEach(links => {
     const source = links[0].relationship
-    const origin = source.descendantOrigin ?? {x: source.x, y: source.y}
+    const parent = links[0].directParent
+    const groups = routeGroups.get(source)
+    const sameOrigin = groups.filter(group => group[0].directParent === parent)
+    const origin = parent
+      ? {x: parent.x, y: parent.y + boxHeight / 2}
+      : source.descendantOrigin ?? {x: source.x, y: source.y}
+    // Different types can share the same parent or couple. Separate their
+    // departure points as well, so a solid trunk cannot mask a dashed one.
+    const departureSpan =
+      !parent &&
+      source.partner &&
+      source.descendantOriginType === 'relationship'
+        ? Math.max(
+            0,
+            Math.abs(source.person.x - source.partner.x) -
+              boxWidth -
+              sexStripExtent -
+              8
+          )
+        : boxWidth - 24
+    const departureSpacing = Math.min(
+      12,
+      departureSpan / Math.max(1, sameOrigin.length - 1)
+    )
+    const start = {
+      x:
+        origin.x +
+        (sameOrigin.indexOf(links) - (sameOrigin.length - 1) / 2) *
+          departureSpacing,
+      y: origin.y,
+    }
     const targets = links.map(treeLink => ({
-      x: treeLink.target.x,
+      x: treeLink.target.x + treeLink.targetOffset,
       y: treeLink.target.y - boxHeight / 2,
     }))
-    const needsBus = links.length > 1 || targets[0].x !== origin.x
+    const needsBus = links.length > 1 || targets[0].x !== start.x
     const parentBottom =
       Math.max(
         ...[source.person, source.partner]
@@ -673,17 +817,27 @@ const setLinkRoutes = (layout, settings) => {
           .map(person => person.y)
       ) +
       boxHeight / 2
-    const connectorStart = Math.max(origin.y, parentBottom)
+    const connectorStart = Math.max(start.y, parentBottom)
+    const busEnd = Math.min(
+      ...links.map(
+        link =>
+          link.target.y -
+          boxHeight / 2 -
+          (labelledTargets.has(link.target) ? 16 : 0)
+      )
+    )
     const busY = needsBus
-      ? connectorStart + (targets[0].y - connectorStart) / 2
+      ? connectorStart +
+        ((busEnd - connectorStart) * (groups.indexOf(links) + 1)) /
+          (groups.length + 1)
       : undefined
 
     links.forEach((treeLink, index) => {
       const target = targets[index]
       treeLink.points = compactPoints(
         needsBus
-          ? [origin, {x: origin.x, y: busY}, {x: target.x, y: busY}, target]
-          : [origin, target]
+          ? [start, {x: start.x, y: busY}, {x: target.x, y: busY}, target]
+          : [start, target]
       )
     })
   })

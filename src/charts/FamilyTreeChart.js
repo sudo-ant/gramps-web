@@ -69,7 +69,15 @@ export class FamilyTreeChart extends ChartCanvas {
     return 'family-tree-node'
   }
 
-  prepare(layout) {
+  prepare(
+    layout,
+    {
+      relationshipLabel = link => link.relationshipType,
+      relationshipTypeLabel = type => type,
+    } = {}
+  ) {
+    this._relationshipLabel = relationshipLabel
+    this._relationshipTypeLabel = relationshipTypeLabel
     const previousKeys = this._keys
     this._root = layout.nodes.find(node => node.generation === 0)
 
@@ -81,24 +89,30 @@ export class FamilyTreeChart extends ChartCanvas {
 
         const node = relationshipNode(relationship)
 
-        if (links.length) {
-          const origin = links[0].points[0]
-          const busY = links[0].points[1].y
-          const childXs = links.map(link => link.points.at(-1).x)
-
-          node.descendantRoute = [
-            [
-              {x: origin.x, y: origin.y},
-              {x: origin.x, y: busY},
+        const groups = new Map()
+        links.forEach(link => {
+          const group = groups.get(link.routeKey) ?? []
+          group.push(link)
+          groups.set(link.routeKey, group)
+        })
+        node.descendantRoutes = [...groups.values()].map(group => {
+          const origin = group[0].points[0]
+          const busY = group[0].points[1].y
+          const childXs = group.map(link => link.points.at(-1).x)
+          return {
+            relationshipType: group[0].relationshipType,
+            routes: [
+              [
+                {x: origin.x, y: origin.y},
+                {x: origin.x, y: busY},
+              ],
+              [
+                {x: Math.min(origin.x, ...childXs), y: busY},
+                {x: Math.max(origin.x, ...childXs), y: busY},
+              ],
             ],
-            [
-              {x: Math.min(origin.x, ...childXs), y: busY},
-              {x: Math.max(origin.x, ...childXs), y: busY},
-            ],
-          ]
-        } else {
-          node.descendantRoute = []
-        }
+          }
+        })
 
         return [relationship, node]
       })
@@ -184,6 +198,12 @@ export class FamilyTreeChart extends ChartCanvas {
 
     links
       .attr('stroke', palette.link)
+      .attr('stroke-dasharray', link =>
+        link.relationshipType === 'Birth' ? null : '5 3'
+      )
+      .attr('role', 'img')
+      .attr('aria-label', link => this._relationshipLabel(link))
+      .attr('tabindex', link => (link.relationshipType === 'Birth' ? null : 0))
       .classed('descendant-connector', true)
       .classed(
         'primary-family-descendant',
@@ -193,6 +213,11 @@ export class FamilyTreeChart extends ChartCanvas {
         'subsequent-family-descendant',
         link => !link.relationship.ancestry && link.relationship.coupleLane > 0
       )
+    links
+      .selectAll('title')
+      .data(link => [link])
+      .join('title')
+      .text(link => this._relationshipLabel(link))
   }
 
   drawExtras(nodes, {palette}) {
@@ -210,13 +235,50 @@ export class FamilyTreeChart extends ChartCanvas {
 
     partnershipGroups
       .selectAll('path.relationship-descendant-route')
-      .data(node => (node.descendantRoute.length ? [node] : []))
+      .data(node => node.descendantRoutes.map(route => ({...route, node})))
       .join('path')
       .attr('class', 'relationship-descendant-route descendant-connector')
-      .attr('d', node => routePath(node.descendantRoute, node))
+      .attr('d', route => routePath(route.routes, route.node))
+      .attr('stroke-dasharray', route =>
+        route.relationshipType === 'Birth' ? null : '5 3'
+      )
+      .attr('aria-hidden', 'true')
       .attr('fill', 'none')
       .attr('stroke', palette.link)
       .attr('stroke-opacity', 0.4)
+
+    // A visible type label complements the dashed stroke and keyboard-readable
+    // explanation. No relationship is inferred from the family's membership.
+    const labelGroups = new Map()
+    this._layout.links
+      .filter(link => link.relationshipType !== 'Birth')
+      .forEach(link => {
+        const types = labelGroups.get(link.target) ?? new Set()
+        types.add(link.relationshipType)
+        labelGroups.set(link.target, types)
+      })
+    this._links
+      .selectAll('text.child-relationship-label')
+      .data(
+        [...labelGroups].map(([target, types]) => ({target, types})),
+        label => label.target.key
+      )
+      .join('text')
+      .attr('class', 'child-relationship-label')
+      .attr('x', link => link.target.x)
+      .attr('text-anchor', 'middle')
+      .attr('y', label => label.target.y - boxHeight / 2 - 6)
+      .attr('fill', palette.text)
+      .attr('stroke', 'none')
+      .attr('font-size', 10)
+      .attr('aria-hidden', 'true')
+      .attr('pointer-events', 'none')
+      .text(label => {
+        const text = [...label.types]
+          .map(type => this._relationshipTypeLabel(type))
+          .join(' / ')
+        return text.length > 24 ? `${text.slice(0, 23)}…` : text
+      })
 
     partnershipGroups
       .selectAll('circle.relationship-junction')

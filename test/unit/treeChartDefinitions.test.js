@@ -145,7 +145,7 @@ describe('chart definitions', () => {
     )
 
     expect(extendOf(url)).toBe(
-      'event_ref_list,primary_parent_family,family_list'
+      'event_ref_list,primary_parent_family,family_list,parent_family_list'
     )
   })
 
@@ -181,7 +181,7 @@ describe('chart definitions', () => {
     expect(url).toContain('locale=de')
     expect(url).toContain('profile=self')
     expect(extendOf(url)).toBe(
-      'event_ref_list,primary_parent_family,family_list'
+      'event_ref_list,primary_parent_family,family_list,parent_family_list'
     )
   })
 
@@ -692,6 +692,27 @@ describe('GrampsjsViewTree', () => {
 
     expect(apiGet).toHaveBeenCalledTimes(2)
     expect(view._data).toEqual([root])
+  })
+
+  it('completes newly revealed upbringing ancestry without retrying unavailable people', async () => {
+    const {view, apiGet} = makeView()
+    useFamilyTree(view)
+    const foster = family('foster', 'F', 'M', ['R'])
+    foster.child_ref_list[0].frel = 'Foster'
+    foster.child_ref_list[0].mrel = 'Foster'
+    const grandparents = family('grandparents', 'GF', '', ['F'])
+    const root = person('R', {grampsId: 'I1', parentFamily: foster})
+    const father = person('F', {parentFamily: grandparents})
+    apiGet
+      .mockResolvedValueOnce({data: [root]})
+      .mockResolvedValueOnce({data: [father]})
+      .mockResolvedValueOnce({data: [person('GF')]})
+    view._fetchIfNeeded()
+    await vi.waitFor(() => expect(view.loading).toBe(false))
+    expect(apiGet).toHaveBeenCalledTimes(3)
+    expect(handlesOf(apiGet.mock.calls[1][0])).toEqual(['F', 'M'])
+    expect(handlesOf(apiGet.mock.calls[2][0])).toEqual(['GF'])
+    expect(view._data.map(person => person.handle)).toEqual(['R', 'F', 'GF'])
   })
 
   it.each(['person', 'settings'])(

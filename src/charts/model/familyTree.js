@@ -29,23 +29,6 @@ const resolvedPerson = (graph, handle) => {
   return isResolvedFamilyTreePerson(person) ? person : undefined
 }
 
-const birthChildren = (family, parentHandle) => {
-  const relationKey =
-    family.father_handle === parentHandle
-      ? 'frel'
-      : family.mother_handle === parentHandle
-      ? 'mrel'
-      : undefined
-
-  if (!relationKey) {
-    return []
-  }
-
-  return (family.child_ref_list ?? [])
-    .filter(childRef => childRef[relationKey] === 'Birth')
-    .map(childRef => childRef.ref)
-}
-
 export const getFamilyTree = (graph, handle, descendantDepth) => {
   const buildPerson = (personHandle, depth, path) => {
     const person = resolvedPerson(graph, personHandle)
@@ -89,14 +72,24 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
           partner: partnerHandle
             ? resolvedPerson(graph, partnerHandle)
             : undefined,
-          children: birthChildren(family, personHandle).map(
-            (childHandle, childIndex) =>
-              buildPerson(
+          children: [
+            ...new Set((family.child_ref_list ?? []).map(ref => ref.ref)),
+          ]
+            .filter(
+              childHandle =>
+                graph.childRelationships(family, childHandle).length
+            )
+            .map((childHandle, childIndex) => ({
+              ...buildPerson(
                 childHandle,
                 depth + 1,
                 `${path}f${familyIndex}c${childIndex}`
-              )
-          ),
+              ),
+              parentRelationships: graph.childRelationships(
+                family,
+                childHandle
+              ),
+            })),
         }
       }
     )
@@ -107,6 +100,7 @@ export const getFamilyTree = (graph, handle, descendantDepth) => {
   return buildPerson(handle, 0, 'p')
 }
 
+// Primary-first ancestry, retaining other recorded parent families too.
 export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
   const buildPerson = (
     personHandle,
@@ -115,7 +109,13 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
     descendantFamilyHandle = ''
   ) => {
     const person = resolvedPerson(graph, personHandle)
-    const parentFamilies = person ? graph.parentFamilies(personHandle) : []
+    const parentFamilies = person
+      ? graph
+          .parentFamilies(personHandle)
+          .filter(
+            family => graph.childRelationships(family, personHandle).length
+          )
+      : []
     const primaryFamily = parentFamilies[0]
     const sideFamilies =
       person && depth > 0
@@ -143,6 +143,7 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
       person,
       depth,
       parentFamily: undefined,
+      parentFamilies: [],
       sideFamilies,
       hiddenAncestorFamilyHandles: [],
       hasAdditionalParentFamilies: parentFamilies.length > 1,
@@ -154,30 +155,40 @@ export const getPrimaryAncestry = (graph, handle, ancestorDepth) => {
     }
 
     if (depth >= ancestorDepth) {
-      node.hiddenAncestorFamilyHandles = [primaryFamily.handle].filter(Boolean)
+      node.hiddenAncestorFamilyHandles = parentFamilies.map(
+        family => family.handle
+      )
       node.hasHiddenPrimaryParents = true
       return node
     }
 
-    node.parentFamily = {
-      family: primaryFamily,
-      father: primaryFamily.father_handle
-        ? buildPerson(
-            primaryFamily.father_handle,
-            depth + 1,
-            `${path}father`,
-            primaryFamily.handle
-          )
-        : undefined,
-      mother: primaryFamily.mother_handle
-        ? buildPerson(
-            primaryFamily.mother_handle,
-            depth + 1,
-            `${path}mother`,
-            primaryFamily.handle
-          )
-        : undefined,
-    }
+    node.parentFamilies = parentFamilies.map((family, familyIndex) => {
+      const relations = graph.childRelationships(family, personHandle)
+      const pathPrefix = familyIndex ? `${path}family${familyIndex}` : path
+      const father = relations.find(relation => relation.role === 'father')
+      const mother = relations.find(relation => relation.role === 'mother')
+      return {
+        family,
+        parentRelationships: relations,
+        father: father
+          ? buildPerson(
+              father.handle,
+              depth + 1,
+              `${pathPrefix}father`,
+              family.handle
+            )
+          : undefined,
+        mother: mother
+          ? buildPerson(
+              mother.handle,
+              depth + 1,
+              `${pathPrefix}mother`,
+              family.handle
+            )
+          : undefined,
+      }
+    })
+    ;[node.parentFamily] = node.parentFamilies
 
     return node
   }

@@ -37,6 +37,7 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 // generation.
 
 const treeExtend = 'event_ref_list,primary_parent_family,family_list'
+const familyTreeExtend = `${treeExtend},parent_family_list`
 
 export function familyTreeCompletionUrl(data, grampsId, values, lang) {
   const graph = new FamilyGraph(data)
@@ -61,7 +62,7 @@ export function familyTreeCompletionUrl(data, grampsId, values, lang) {
   }
   return `/api/people/?handles=${handles
     .map(missingHandle => encodeURIComponent(missingHandle))
-    .join(',')}&locale=${lang || 'en'}&profile=self&extend=${treeExtend}`
+    .join(',')}&locale=${lang || 'en'}&profile=self&extend=${familyTreeExtend}`
 }
 
 export function mergePeopleByHandle(initial, additional) {
@@ -236,7 +237,7 @@ export const chartDefinitions = {
     zoomable: true,
     request: (grampsId, {ancestors, descendants}) => ({
       rules: treeRules(grampsId, ancestors + 1, descendants + 1),
-      extend: treeExtend,
+      extend: familyTreeExtend,
     }),
     completionUrl: familyTreeCompletionUrl,
     render: ({grampsId, values, data, canEdit, appState}) => html`

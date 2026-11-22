@@ -296,7 +296,7 @@ describe('getPrimaryAncestry', () => {
     expect(result.parentFamily.mother.person.profile.sex).toBe('F')
   })
 
-  it('records additional parent families without expanding them', () => {
+  it('expands additional parent families in primary-first order', () => {
     const birth = family('FB', 'F', 'M', ['R'])
     const adoptive = family('FA', 'AF', 'AM', ['R'])
 
@@ -319,6 +319,12 @@ describe('getPrimaryAncestry', () => {
 
     expect(result.parentFamily.family).toBe(birth)
     expect(result.hasAdditionalParentFamilies).toBe(true)
+    expect(result.parentFamilies.map(parent => parent.family)).toEqual([
+      birth,
+      adoptive,
+    ])
+    expect(result.parentFamilies[1].father.handle).toBe('AF')
+    expect(result.parentFamilies[1].mother.handle).toBe('AM')
   })
 
   it('supports a missing parent in the primary family', () => {

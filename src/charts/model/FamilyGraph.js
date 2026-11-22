@@ -82,6 +82,22 @@ export class FamilyGraph {
     }
   }
 
+  // ChildRef relations belong to each parent, not to the couple. An absent
+  // handle or explicit None is not a parent; missing type data is Unknown,
+  // never evidence of Birth. Keep this separate from the standard charts'
+  // primary-parent and birth-only traversal policies.
+  childRelationships(family, childHandle) {
+    const childRef = family.child_ref_list?.find(ref => ref.ref === childHandle)
+    if (!childRef) {
+      return []
+    }
+    return ['father', 'mother'].flatMap(role => {
+      const handle = family[`${role}_handle`]
+      const type = childRef?.[role === 'father' ? 'frel' : 'mrel'] || 'Unknown'
+      return handle && type !== 'None' ? [{role, handle, type}] : []
+    })
+  }
+
   // Returns the handles of the person's children in all families where they
   // are a parent. With `birthOnly`, only children whose relation to this
   // parent is Birth are included.

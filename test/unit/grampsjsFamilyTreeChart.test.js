@@ -99,6 +99,24 @@ describe('GrampsjsFamilyTreeChart', () => {
     expect(options).not.toHaveProperty('viewportInsets')
   })
 
+  it('translates relationship types and names both ends of accessible explanations', () => {
+    const element = new GrampsjsFamilyTreeChart()
+    element.appState = {i18n: {strings: {Father: 'Vater', Foster: 'Pflege'}}}
+    element._graph = {
+      person: () => ({profile: {name_given: 'Pat', name_surname: 'Lee'}}),
+    }
+    element._layout = {nodes: []}
+    element._drawChart()
+    const options = mocks.update.mock.calls[0][1]
+    expect(options.relationshipTypeLabel('Foster')).toBe('Pflege')
+    expect(
+      options.relationshipLabel({
+        target: {person: {profile: {name_given: 'Alex', name_surname: 'Lee'}}},
+        parents: [{handle: 'P', role: 'father', type: 'Foster'}],
+      })
+    ).toBe('Alex Lee: Vater Pat Lee: Pflege')
+  })
+
   it('retains the current layout while a missing selected person is fetched', () => {
     const element = new GrampsjsFamilyTreeChart()
     const layout = {nodes: [{handle: 'old'}]}
