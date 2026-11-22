@@ -772,10 +772,26 @@ const setLinkRoutes = (layout, settings) => {
     groups.push(links)
     routeGroups.set(links[0].relationship, groups)
   })
+  // Descendant families of the same person share a generation gap. Allocate
+  // their buses together: later families run above earlier ones, so a
+  // one-parent trunk cannot merge with an earlier couple's child drops.
+  const familyBuses = new Map()
+  routeGroups.forEach((groups, source) => {
+    const key = source.ancestry ? source : source.person
+    const buses = familyBuses.get(key) ?? []
+    buses.push(...groups)
+    familyBuses.set(key, buses)
+  })
+  familyBuses.forEach(buses =>
+    buses.sort(
+      (a, b) => b[0].relationship.coupleLane - a[0].relationship.coupleLane
+    )
+  )
   byRelationship.forEach(links => {
     const source = links[0].relationship
     const parent = links[0].directParent
     const groups = routeGroups.get(source)
+    const buses = familyBuses.get(source.ancestry ? source : source.person)
     const sameOrigin = groups.filter(group => group[0].directParent === parent)
     const origin = parent
       ? {x: parent.x, y: parent.y + boxHeight / 2}
@@ -819,17 +835,19 @@ const setLinkRoutes = (layout, settings) => {
       boxHeight / 2
     const connectorStart = Math.max(start.y, parentBottom)
     const busEnd = Math.min(
-      ...links.map(
-        link =>
-          link.target.y -
-          boxHeight / 2 -
-          (labelledTargets.has(link.target) ? 16 : 0)
-      )
+      ...buses
+        .flat()
+        .map(
+          link =>
+            link.target.y -
+            boxHeight / 2 -
+            (labelledTargets.has(link.target) ? 16 : 0)
+        )
     )
     const busY = needsBus
       ? connectorStart +
-        ((busEnd - connectorStart) * (groups.indexOf(links) + 1)) /
-          (groups.length + 1)
+        ((busEnd - connectorStart) * (buses.indexOf(links) + 1)) /
+          (buses.length + 1)
       : undefined
 
     links.forEach((treeLink, index) => {

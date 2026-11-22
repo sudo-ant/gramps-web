@@ -50,6 +50,42 @@ const expectNoOverlaps = layout => {
   })
 }
 
+const expectConnectorsAvoidCards = layout => {
+  for (const link of layout.links) {
+    const otherCards = layout.nodes.filter(
+      node =>
+        node !== link.target &&
+        node !== link.relationship.person &&
+        node !== link.relationship.partner
+    )
+    for (let i = 1; i < link.points.length; i += 1) {
+      const start = link.points[i - 1]
+      const end = link.points[i]
+      for (const node of otherCards) {
+        const {boxWidth, boxHeight, sexStripExtent} = familyTreeLayoutDefaults
+        const left = node.x - boxWidth / 2 - sexStripExtent
+        const right = node.x + boxWidth / 2
+        const top = node.y - boxHeight / 2
+        const bottom = node.y + boxHeight / 2
+        const crosses =
+          start.x === end.x
+            ? start.x > left &&
+              start.x < right &&
+              Math.max(start.y, end.y) > top &&
+              Math.min(start.y, end.y) < bottom
+            : start.y > top &&
+              start.y < bottom &&
+              Math.max(start.x, end.x) > left &&
+              Math.min(start.x, end.x) < right
+        expect(
+          crosses,
+          `Connector to ${link.target.handle} crosses ${node.handle}`
+        ).toBe(false)
+      }
+    }
+  }
+}
+
 const expectFiniteGeometry = layout => {
   const values = Object.values(layout.bounds)
   layout.nodes.forEach(node =>
@@ -334,6 +370,116 @@ const verifiedFamilies = () => {
 }
 
 describe('verified F0340/F0326/F0045 relationship structure', () => {
+  it.each(['MOTHER', 'GM'])(
+    'separates the mother-only and couple routes when focused on %s',
+    focal => {
+      const {people} = verifiedFamilies()
+      // Putting the couple first reproduces the reported overlap: the two
+      // independently calculated midpoint buses lay on top of each other.
+      people
+        .find(person => person.handle === 'MOTHER')
+        .extended.families.reverse()
+      const layout = layoutOf(people, focal)
+      const biological = layout.links.filter(
+        link => link.relationship.family.handle === 'F0340'
+      )
+      const couple = layout.links.filter(
+        link => link.relationship.family.handle === 'F0045'
+      )
+      expect(biological).toHaveLength(1)
+      expect(biological[0].parents).toEqual([
+        {role: 'mother', handle: 'MOTHER', type: 'Birth'},
+      ])
+      expect(couple.map(link => link.target.handle)).toEqual(['VERA', 'SHEILA'])
+      for (const oneParent of biological) {
+        for (const pair of couple) {
+          for (let i = 1; i < oneParent.points.length; i += 1) {
+            const a = oneParent.points[i - 1]
+            const b = oneParent.points[i]
+            for (let j = 1; j < pair.points.length; j += 1) {
+              const c = pair.points[j - 1]
+              const d = pair.points[j]
+              const axis =
+                a.y === b.y && c.y === d.y && a.y === c.y
+                  ? 'x'
+                  : a.x === b.x && c.x === d.x && a.x === c.x
+                  ? 'y'
+                  : undefined
+              const overlap = axis
+                ? Math.min(
+                    Math.max(a[axis], b[axis]),
+                    Math.max(c[axis], d[axis])
+                  ) -
+                  Math.max(
+                    Math.min(a[axis], b[axis]),
+                    Math.min(c[axis], d[axis])
+                  )
+                : 0
+              expect(
+                overlap,
+                'Different families must not share a horizontal or vertical segment'
+              ).toBeLessThanOrEqual(0)
+            }
+          }
+        }
+      }
+      expectFiniteGeometry(layout)
+      expectNoOverlaps(layout)
+      expectConnectorsAvoidCards(layout)
+      // This is a routing change: retain the existing card placement, bounds
+      // and legitimate repeated Kenneth cards in the grandparent view.
+      expect(
+        layout.nodes.filter(node => node.handle === 'KENNETH')
+      ).toHaveLength(focal === 'GM' ? 2 : 1)
+      expect(
+        layout.nodes
+          .filter(node =>
+            ['MOTHER', 'GUNTER', 'VERA', 'SHEILA', 'KENNETH'].includes(
+              node.handle
+            )
+          )
+          .map(({handle, x, y}) => ({handle, x, y}))
+      ).toEqual(
+        focal === 'MOTHER'
+          ? [
+              {handle: 'MOTHER', x: 0, y: 0},
+              {handle: 'GUNTER', x: -218, y: 0},
+              {handle: 'VERA', x: -218, y: 140},
+              {handle: 'SHEILA', x: 0, y: 140},
+              {handle: 'KENNETH', x: -444, y: 140},
+            ]
+          : [
+              {handle: 'MOTHER', x: -218, y: 140},
+              {handle: 'GUNTER', x: -436, y: 140},
+              {handle: 'VERA', x: -436, y: 280},
+              {handle: 'SHEILA', x: -218, y: 280},
+              {handle: 'KENNETH', x: -662, y: 280},
+              {handle: 'KENNETH', x: 218, y: 140},
+            ]
+      )
+      expect(layout.bounds).toEqual(
+        focal === 'MOTHER'
+          ? {xMin: -563, xMax: 224, yMin: -205, yMax: 205}
+          : {xMin: -781, xMax: 333, yMin: -65, yMax: 345}
+      )
+      const chart = new FamilyTreeChart()
+      chart.update(layout, {bboxWidth: 1200, bboxHeight: 700})
+      const paths = [...chart.node.querySelectorAll('path.link')]
+      expect(
+        paths
+          .filter(path => path.__data__.relationshipType === 'Birth')
+          .every(path => !path.hasAttribute('stroke-dasharray'))
+      ).toBe(true)
+      if (focal === 'GM') {
+        expect(
+          paths
+            .filter(path => path.__data__.relationshipType === 'Foster')
+            .every(path => path.getAttribute('stroke-dasharray') === '5 3')
+        ).toBe(true)
+      }
+    }
+  )
+
   it('never invents a parent-child association absent from the child reference list', () => {
     const {graph, birth, grandparents, later} = verifiedFamilies()
     expect(graph.childRelationships(birth, 'KENNETH')).toEqual([
@@ -416,40 +562,7 @@ describe('verified F0340/F0326/F0045 relationship structure', () => {
         }
       }
       expectNoOverlaps(layout)
-      for (const link of layout.links) {
-        const otherCards = layout.nodes.filter(
-          node =>
-            node !== link.target &&
-            node !== link.relationship.person &&
-            node !== link.relationship.partner
-        )
-        for (let i = 1; i < link.points.length; i += 1) {
-          const start = link.points[i - 1]
-          const end = link.points[i]
-          for (const node of otherCards) {
-            const {boxWidth, boxHeight, sexStripExtent} =
-              familyTreeLayoutDefaults
-            const left = node.x - boxWidth / 2 - sexStripExtent
-            const right = node.x + boxWidth / 2
-            const top = node.y - boxHeight / 2
-            const bottom = node.y + boxHeight / 2
-            const crosses =
-              start.x === end.x
-                ? start.x > left &&
-                  start.x < right &&
-                  Math.max(start.y, end.y) > top &&
-                  Math.min(start.y, end.y) < bottom
-                : start.y > top &&
-                  start.y < bottom &&
-                  Math.max(start.x, end.x) > left &&
-                  Math.min(start.x, end.x) < right
-            expect(
-              crosses,
-              `${focal}: connector to ${link.target.handle} crosses ${node.handle}`
-            ).toBe(false)
-          }
-        }
-      }
+      expectConnectorsAvoidCards(layout)
     }
   )
 
